@@ -1,0 +1,87 @@
+# =============================================================================
+# ChoirManager Backend — .dockerignore
+# =============================================================================
+
+# ─── Git ─────────────────────────────────────────────────────────────────────
+.git
+.gitignore
+
+# ─── Python ──────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# ─── Virtual Environments (ne pas copier dans l'image) ───────────────────────
+venv/
+.venv/
+env/
+.env/
+ENV/
+
+# ─── Distribution / Packaging ────────────────────────────────────────────────
+dist/
+build/
+*.egg-info/
+*.egg
+
+# ─── Django — fichiers locaux ────────────────────────────────────────────────
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+static_collected/
+*.log
+
+# ─── Environment & Secrets ───────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ─── IDE & Editors ───────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ─── OS Files ────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ─── Testing & Coverage ─────────────────────────────────────────────────────
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+coverage.xml
+nosetests.xml
+*.cover
+
+# ─── Type-checking ───────────────────────────────────────────────────────────
+.mypy_cache/
+.dmypy.json
+.pyre/
+.pytype/
+
+# ─── Docker (éviter les boucles de build) ────────────────────────────────────
+Dockerfile
+Dockerfile.*
+docker-compose*.yml
+.dockerignore
+
+# ─── Documentation & Planning ────────────────────────────────────────────────
+*.md
+docs/
+LICENSE
+
+# ─── Misc ────────────────────────────────────────────────────────────────────
+*.bak
+*.tmp
+*.temp

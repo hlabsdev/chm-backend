@@ -1,0 +1,19 @@
+# ChoirManager — Backend Dependencies
+# =====================================
+
+# Framework
+Django>=5.1,<6.0
+djangorestframework>=3.15,<4.0
+django-filter>=24.0
+
+# Authentication JWT
+djangorestframework-simplejwt>=5.3,<6.0
+
+# CORS (pour le frontend Angular)
+django-cors-headers>=4.3,<5.0
+
+# Images (photos membres, logos)
+Pillow>=10.0
+
+# Utilitaires
+python-decouple>=3.8
