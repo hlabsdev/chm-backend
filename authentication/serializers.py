@@ -39,6 +39,8 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
         # Données utilisateur de base
         token["email"] = user.email
+        token["first_name"] = user.first_name
+        token["last_name"] = user.last_name
         token["nom_complet"] = user.get_full_name()
         token["is_superuser"] = user.is_superuser
 
