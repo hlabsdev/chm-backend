@@ -14,6 +14,7 @@ urlpatterns = [
     path("admin/", admin.site.urls),
 
     # API v1
+    path("api/core/", include("core.urls")),
     path("api/auth/", include("authentication.urls")),
     path("api/membres/", include("membres.urls")),
     path("api/musique/", include("musique.urls")),

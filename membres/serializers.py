@@ -152,12 +152,13 @@ class MembreListSerializer(serializers.ModelSerializer):
     nom_complet = serializers.CharField(source="user.get_full_name", read_only=True)
     email = serializers.EmailField(source="user.email", read_only=True)
     pupitre_nom = serializers.CharField(source="pupitre.nom", read_only=True, default=None)
+    pupitre_categorie = serializers.CharField(source="pupitre.categorie", read_only=True, default=None)
 
     class Meta:
         model = Membre
         fields = [
             "id", "numero_membre", "nom_complet", "email",
-            "pupitre", "pupitre_nom", "statut",
+            "pupitre", "pupitre_nom", "pupitre_categorie", "statut",
             "date_adhesion", "telephone",
         ]
         read_only_fields = fields
@@ -177,6 +178,7 @@ class MembreDetailSerializer(serializers.ModelSerializer):
 
     # Champs relationnels
     pupitre_nom = serializers.CharField(source="pupitre.nom", read_only=True, default=None)
+    pupitre_categorie = serializers.CharField(source="pupitre.categorie", read_only=True, default=None)
     mandats_actifs = MandatNestedSerializer(many=True, read_only=True, source="mandats")
     groupes = serializers.SerializerMethodField()
 
@@ -185,7 +187,7 @@ class MembreDetailSerializer(serializers.ModelSerializer):
         fields = [
             "id", "username", "numero_membre",
             "nom_complet", "first_name", "last_name", "email",
-            "pupitre", "pupitre_nom", "statut",
+            "pupitre", "pupitre_nom", "pupitre_categorie", "statut",
             "date_adhesion", "telephone", "photo", "notes",
             "mandats_actifs", "groupes",
             "is_deleted", "deleted_at", "created_at", "updated_at",

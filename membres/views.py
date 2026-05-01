@@ -133,6 +133,7 @@ class MandatViewSet(ChoraleFilterMixin, viewsets.ModelViewSet):
     queryset = Mandat.objects.select_related("membre__user", "poste")
     serializer_class = MandatSerializer
     permission_classes = [IsBureau]
+    filterset_fields = ["membre", "poste", "is_active"]
 
     def get_queryset(self):
         """
