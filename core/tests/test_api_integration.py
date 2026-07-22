@@ -32,6 +32,12 @@ class TestAuth:
         assert resp.status_code == 200
         assert "access" in resp.data and "refresh" in resp.data
 
+        # La devise de la chorale est portée par le token (défaut XOF).
+        from rest_framework_simplejwt.tokens import AccessToken
+        claims = AccessToken(resp.data["access"])
+        assert claims["chorale_currency"] == "XOF"
+        assert set(claims["groups"]) >= {"tresorier"}
+
     def test_refresh_renvoie_un_nouvel_access(self, membre_factory, chorale_a):
         membre = membre_factory(chorale_a)
         client = APIClient()
@@ -208,3 +214,48 @@ class TestFinances:
         etat = client.get("/api/finances/etat-caisse/")
         assert etat.status_code == 200
         assert float(etat.data["solde"]) == 70.0
+
+    def test_journal_filtre_par_periode(
+        self, auth_client, membre_factory, mandat_factory, chorale_a
+    ):
+        """Le filtre date_min/date_max du journal (front finances) fonctionne."""
+        tresorier = membre_factory(chorale_a)
+        mandat_factory(tresorier, "tresorier")
+        client = auth_client(tresorier)
+        cat = client.post(
+            "/api/finances/categories/",
+            {"nom": "Divers", "type_mouvement": "entree"}, format="json",
+        ).data
+        for d in ("2026-01-10", "2026-06-10"):
+            client.post(
+                "/api/finances/mouvements/",
+                {"date": d, "montant": "10.00", "sens": "entree",
+                 "categorie": cat["id"], "motif": "x"}, format="json",
+            )
+
+        resp = client.get("/api/finances/mouvements/?date_min=2026-05-01")
+
+        assert resp.status_code == 200
+        assert resp.data["count"] == 1
+        assert resp.data["results"][0]["date"] == "2026-06-10"
+
+    def test_campagne_creation_et_liste_avec_taux(
+        self, auth_client, membre_factory, mandat_factory, chorale_a
+    ):
+        """La liste des campagnes (front finances) expose le taux de recouvrement."""
+        tresorier = membre_factory(chorale_a)
+        mandat_factory(tresorier, "tresorier")
+        client = auth_client(tresorier)
+
+        create = client.post(
+            "/api/finances/campagnes/",
+            {"nom": "Uniformes 2026", "type_campagne": "ponctuelle",
+             "montant_unitaire": "50.00", "date_debut": "2026-01-01"},
+            format="json",
+        )
+        assert create.status_code == 201, create.data
+
+        liste = client.get("/api/finances/campagnes/")
+        assert liste.status_code == 200
+        assert liste.data["count"] == 1
+        assert "taux_recouvrement" in liste.data["results"][0]

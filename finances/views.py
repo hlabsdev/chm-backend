@@ -15,6 +15,7 @@ from rest_framework.views import APIView
 from core.mixins import ChoraleFilterMixin, SoftDeleteMixin
 from core.permissions import IsBureau, IsBureauOrTresorier
 
+from .filters import MouvementFilter
 from .models import (
     CampagneCotisation,
     CategorieMouvement,
@@ -56,7 +57,7 @@ class MouvementViewSet(SoftDeleteMixin, ChoraleFilterMixin, viewsets.ModelViewSe
     )
     serializer_class = MouvementSerializer
     permission_classes = [IsBureauOrTresorier]
-    filterset_fields = ["sens", "categorie", "membre"]
+    filterset_class = MouvementFilter
     ordering_fields = ["date", "montant", "created_at"]
 
     def perform_create(self, serializer):

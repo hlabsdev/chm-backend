@@ -70,6 +70,23 @@ class Chorale(TimeStampedModel):
         max_length=200, blank=True,
         verbose_name="Devise / Motto"
     )
+
+    class Monnaie(models.TextChoices):
+        XOF = "XOF", "Franc CFA — BCEAO (XOF)"
+        XAF = "XAF", "Franc CFA — BEAC (XAF)"
+        EUR = "EUR", "Euro (€)"
+        USD = "USD", "Dollar US ($)"
+        MAD = "MAD", "Dirham marocain (MAD)"
+        GHS = "GHS", "Cedi ghanéen (GHS)"
+        NGN = "NGN", "Naira nigérian (NGN)"
+
+    currency = models.CharField(
+        max_length=3,
+        choices=Monnaie.choices,
+        default=Monnaie.XOF,
+        verbose_name="Monnaie de gestion",
+        help_text="Devise utilisée pour toute la comptabilité de la chorale (défaut : Franc CFA XOF).",
+    )
     email = models.EmailField(blank=True)
     telephone = models.CharField(max_length=25, blank=True)
     adresse = models.TextField(blank=True)

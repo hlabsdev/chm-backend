@@ -57,6 +57,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             token["chorale_id"] = membre.chorale_id
             token["chorale_prefix"] = membre.chorale.prefix
             token["chorale_nom"] = membre.chorale.nom
+            token["chorale_currency"] = membre.chorale.currency
         else:
             token["membre_id"] = None
             token["chorale_id"] = None
