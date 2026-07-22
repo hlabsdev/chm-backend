@@ -17,3 +17,7 @@ Pillow>=10.0
 
 # Utilitaires
 python-decouple>=3.8
+
+# Tests
+pytest>=8.0
+pytest-django>=4.8

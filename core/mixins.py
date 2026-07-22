@@ -28,8 +28,11 @@ class ChoraleFilterMixin:
         if self.request.user.is_superuser:
             return qs
 
+        # `request.chorale` est un SimpleLazyObject (cf. ChoraleMiddleware) :
+        # on teste la véracité, ce qui force l'évaluation et évite le piège
+        # du `is not None` (l'objet paresseux n'est jamais identique à None).
         chorale = getattr(self.request, "chorale", None)
-        if chorale is not None:
+        if chorale:
             return qs.filter(chorale=chorale)
 
         # L'utilisateur n'a pas de chorale associée
@@ -37,20 +40,27 @@ class ChoraleFilterMixin:
 
     def perform_create(self, serializer):
         """
-        Injecte automatiquement la chorale du user connecté
-        lors de la création d'un objet.
+        Injecte automatiquement la chorale du user connecté lors de la création.
+
+        `serializer.save(chorale=...)` fonctionne même si le serializer n'expose
+        PAS de champ `chorale` : DRF fusionne les kwargs de save() dans les
+        validated_data passées à Model.objects.create(). C'est volontaire — les
+        serializers n'exposent pas `chorale` (déduite du tenant, jamais fournie
+        par le client). Ne PAS conditionner l'injection à la présence du champ :
+        sinon la FK chorale (NOT NULL) reste vide et la création échoue.
         """
         chorale = getattr(self.request, "chorale", None)
 
-        if chorale is None and not self.request.user.is_superuser:
+        if not chorale and not self.request.user.is_superuser:
             raise PermissionDenied(
                 "Vous devez être associé à une chorale pour créer cet élément."
             )
 
-        # Si le serializer accepte 'chorale', l'injecter
-        if "chorale" in serializer.fields:
+        if chorale:
             serializer.save(chorale=chorale)
         else:
+            # Superuser sans chorale de contexte : la chorale doit être fournie
+            # dans la payload (cas d'administration multi-chorale).
             serializer.save()
 
 

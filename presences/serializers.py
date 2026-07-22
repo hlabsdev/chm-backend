@@ -22,6 +22,11 @@ class PresenceSerializer(serializers.ModelSerializer):
             "membre_pupitre", "statut", "motif", "created_at",
         ]
         read_only_fields = ["id", "created_at"]
+        # Pas de UniqueTogetherValidator auto-généré : le POST est un upsert
+        # (update_or_create dans PresenceViewSet.create) — re-poster le même
+        # couple (repetition, membre) doit mettre à jour, pas échouer en 400.
+        # La contrainte unique_together du modèle reste le garde-fou en DB.
+        validators = []
 
 
 class RepetitionListSerializer(serializers.ModelSerializer):

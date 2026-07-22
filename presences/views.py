@@ -7,6 +7,7 @@ API REST pour la gestion des répétitions, du pointage et des permissions.
 from django.utils import timezone
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
+from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 
 from core.mixins import ChoraleFilterMixin
@@ -98,7 +99,11 @@ class RepetitionViewSet(ChoraleFilterMixin, viewsets.ModelViewSet):
 class PresenceViewSet(ChoraleFilterMixin, viewsets.ModelViewSet):
     """
     API Présences — Pointage individuel.
-    Principalement utilisé en lecture pour les rapports.
+
+    POST = upsert idempotent sur (repetition, membre) : l'écran de pointage
+    mobile envoie chaque tap immédiatement ; un retry réseau ne doit jamais
+    provoquer une erreur d'unicité ni un doublon. Re-poster le même couple
+    met simplement à jour le statut (200), la création initiale renvoie 201.
     """
     queryset = Presence.objects.select_related(
         "membre__user", "membre__pupitre", "repetition"
@@ -110,6 +115,39 @@ class PresenceViewSet(ChoraleFilterMixin, viewsets.ModelViewSet):
         if self.action in ["list", "retrieve"]:
             return [permissions.IsAuthenticated()]
         return [IsBureauOrMaitreChoeur()]
+
+    def create(self, request, *args, **kwargs):
+        """Upsert : créer ou mettre à jour le pointage d'un membre."""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        repetition = serializer.validated_data["repetition"]
+        membre = serializer.validated_data["membre"]
+
+        # Isolation tenant : la répétition ET le membre doivent appartenir
+        # à la chorale du user (le mixin ne filtre que la lecture, pas les FK
+        # d'un POST). 404 pour ne pas révéler l'existence d'autres chorales.
+        chorale = getattr(request, "chorale", None)
+        if chorale and (
+            repetition.chorale_id != chorale.id or membre.chorale_id != chorale.id
+        ):
+            raise NotFound()
+
+        presence, created = Presence.objects.update_or_create(
+            repetition=repetition,
+            membre=membre,
+            defaults={
+                "statut": serializer.validated_data["statut"],
+                "motif": serializer.validated_data.get("motif", ""),
+                "chorale": repetition.chorale,
+            },
+        )
+
+        out = self.get_serializer(presence)
+        return Response(
+            out.data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
 
 
 class PermissionRequestViewSet(ChoraleFilterMixin, viewsets.ModelViewSet):

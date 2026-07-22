@@ -1,6 +1,7 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework import status
 from core.permissions import IsBureauOrMaitreChoeur
 from membres.models import Membre, Pupitre
 from musique.models import Chant
@@ -14,7 +15,29 @@ class DashboardStatsView(APIView):
     def get(self, request, *args, **kwargs):
         chorale = getattr(request, 'chorale', None)
         if not chorale:
-            return Response({"detail": "Chorale non trouvée."}, status=400)
+            # Deux cas distincts derrière un request.chorale absent :
+            if request.user.is_superuser:
+                # Superuser : volontairement rattaché à aucune chorale
+                # (cf. ChoraleMiddleware). Dashboard neutre, pas une erreur.
+                return Response({
+                    "role": "staff",
+                    "detail": "Compte super-administrateur — non rattaché à une chorale.",
+                    "membres_actifs": 0,
+                    "chants_actifs": 0,
+                    "taux_presence": 0,
+                    "prochaine_repetition": None,
+                    "demandes_absence": [],
+                    "pupitres": [],
+                    "programme": [],
+                })
+
+            # Utilisateur authentifié sans profil Membre : anomalie de données.
+            # On la rend visible plutôt que de la masquer.
+            return Response(
+                {"detail": "Aucun profil membre n'est associé à ce compte. "
+                           "Contactez un administrateur."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         is_staff = request.user.is_superuser or request.user.groups.filter(name__in=["bureau", "maitre_choeur"]).exists()
 
