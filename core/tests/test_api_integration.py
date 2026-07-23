@@ -130,6 +130,34 @@ class TestMembresStructure:
         assert liste.status_code == 200
         assert liste.data["count"] == 1
 
+    def test_bureau_cree_un_membre_avec_compte(self, auth_client, membre_factory, mandat_factory, chorale_a):
+        """Création membre (1.2) : User + Membre créés, numero_membre auto, login possible."""
+        bureau = membre_factory(chorale_a)
+        mandat_factory(bureau, "bureau")
+        client = auth_client(bureau)
+
+        resp = client.post(
+            "/api/membres/",
+            {
+                "username": "nouveau.choriste", "password": "provisoire123",
+                "first_name": "Ama", "last_name": "Koffi",
+                "email": "ama@example.com", "statut": "actif",
+                "date_adhesion": "2026-07-01",
+            },
+            format="json",
+        )
+        assert resp.status_code == 201, resp.data
+        assert resp.data["numero_membre"].startswith(chorale_a.prefix)
+
+        # Le compte créé permet de se connecter.
+        from rest_framework.test import APIClient
+        login = APIClient().post(
+            "/api/auth/login/",
+            {"username": "nouveau.choriste", "password": "provisoire123"},
+            format="json",
+        )
+        assert login.status_code == 200
+
     def test_membre_simple_ne_cree_pas_de_pupitre(self, auth_client, membre_factory, chorale_a):
         membre = membre_factory(chorale_a)
         client = auth_client(membre)
@@ -173,6 +201,43 @@ class TestMusique:
             format="json",
         )
         assert resp.status_code == 403
+
+    def test_upload_partition_et_suivi_apprentissage(
+        self, auth_client, membre_factory, mandat_factory, chorale_a, settings, tmp_path
+    ):
+        """3.1/3.2 : upload d'une partition + statut d'apprentissage par séance."""
+        settings.MEDIA_ROOT = str(tmp_path)
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from presences.models import Repetition
+
+        mdc = membre_factory(chorale_a)
+        mandat_factory(mdc, "maitre_choeur")
+        client = auth_client(mdc)
+
+        chant = client.post(
+            "/api/musique/chants/",
+            {"titre": "Alleluia", "style": "gospel"}, format="json",
+        ).data
+
+        fichier = SimpleUploadedFile("score.pdf", b"%PDF-1.4 faux", content_type="application/pdf")
+        up = client.post(
+            "/api/musique/partitions/",
+            {"chant": chant["id"], "titre": "Score complet", "fichier": fichier},
+            format="multipart",
+        )
+        assert up.status_code == 201, up.data
+
+        rep = Repetition.objects.create(chorale=chorale_a, date="2026-08-01", heure_debut="19:00")
+        sc = client.post(
+            "/api/musique/seances-chants/",
+            {"repetition": rep.pk, "chant": chant["id"], "statut": "maitrise"},
+            format="json",
+        )
+        assert sc.status_code == 201, sc.data
+
+        detail = client.get(f"/api/musique/chants/{chant['id']}/").data
+        assert detail["dernier_statut"] == "maitrise"
+        assert detail["partitions"][0]["titre"] == "Score complet"
 
 
 # ---------------------------------------------------------------------------
@@ -259,3 +324,95 @@ class TestFinances:
         assert liste.status_code == 200
         assert liste.data["count"] == 1
         assert "taux_recouvrement" in liste.data["results"][0]
+
+    def test_generer_puis_payer_cotisation(
+        self, auth_client, membre_factory, mandat_factory, chorale_a
+    ):
+        """
+        Flux 4.2 : générer les cotisations pour les membres actifs, puis
+        enregistrer un paiement complet → statut « payé » + mouvement de caisse.
+        """
+        tresorier = membre_factory(chorale_a)
+        mandat_factory(tresorier, "tresorier")
+        membre_factory(chorale_a)  # 2e membre actif
+        client = auth_client(tresorier)
+
+        camp = client.post(
+            "/api/finances/campagnes/",
+            {"nom": "Annuelle 2026", "type_campagne": "annuelle",
+             "montant_unitaire": "40.00", "date_debut": "2026-01-01"},
+            format="json",
+        ).data
+
+        gen = client.post(f"/api/finances/campagnes/{camp['id']}/generer/")
+        assert gen.status_code == 201
+        assert gen.data["nombre"] == 2  # deux membres actifs
+
+        cotisations = client.get(f"/api/finances/cotisations/?campagne={camp['id']}").data["results"]
+        cot = cotisations[0]
+
+        pay = client.post(
+            "/api/finances/paiements/",
+            {"cotisation": cot["id"], "montant": "40.00", "date_paiement": "2026-07-10"},
+            format="json",
+        )
+        assert pay.status_code == 201, pay.data
+
+        # La cotisation est soldée et un mouvement d'entrée a été créé.
+        refreshed = client.get(f"/api/finances/cotisations/?campagne={camp['id']}").data["results"]
+        payee = next(c for c in refreshed if c["id"] == cot["id"])
+        assert payee["statut"] == "paye"
+        mouvements = client.get("/api/finances/mouvements/?sens=entree").data
+        assert mouvements["count"] >= 1
+
+    def test_tarifs_par_sexe_appliques_a_la_generation(
+        self, auth_client, membre_factory, mandat_factory, chorale_a
+    ):
+        """
+        Décision retenue : des paliers (tarifs) par critère (sexe) fixent le
+        montant dû à la génération — ex. Femmes 5000 / Hommes 4500.
+        """
+        tresorier = membre_factory(chorale_a)
+        mandat_factory(tresorier, "tresorier")
+        femme = membre_factory(chorale_a)
+        femme.sexe = "femme"; femme.save(update_fields=["sexe"])
+        homme = membre_factory(chorale_a)
+        homme.sexe = "homme"; homme.save(update_fields=["sexe"])
+        client = auth_client(tresorier)
+
+        camp = client.post(
+            "/api/finances/campagnes/",
+            {"nom": "Tenues 2026", "type_campagne": "ponctuelle",
+             "montant_unitaire": "5000.00", "date_debut": "2026-01-01"},
+            format="json",
+        ).data
+
+        for sexe, montant in (("femme", "5000.00"), ("homme", "4500.00")):
+            r = client.post(
+                "/api/finances/tarifs/",
+                {"campagne": camp["id"], "nom": f"Tenue {sexe}",
+                 "montant": montant, "critere_sexe": sexe},
+                format="json",
+            )
+            assert r.status_code == 201, r.data
+
+        client.post(f"/api/finances/campagnes/{camp['id']}/generer/")
+        cotisations = client.get(f"/api/finances/cotisations/?campagne={camp['id']}").data["results"]
+        montants = {c["membre"]: c["montant_du"] for c in cotisations}
+        assert montants[femme.pk] == "5000.00"
+        assert montants[homme.pk] == "4500.00"
+        # Tresorier sans sexe → tarif par défaut absent → montant_unitaire.
+        assert montants[tresorier.pk] == "5000.00"
+
+        # Montant éditable individuellement + exonération.
+        cot_homme = next(c for c in cotisations if c["membre"] == homme.pk)
+        patch = client.patch(
+            f"/api/finances/cotisations/{cot_homme['id']}/",
+            {"montant_du": "2250.00"}, format="json",
+        )
+        assert patch.status_code == 200
+        assert patch.data["montant_du"] == "2250.00"
+
+        exo = client.post(f"/api/finances/cotisations/{cot_homme['id']}/exonerer/")
+        assert exo.status_code == 200
+        assert exo.data["statut"] == "exonere"

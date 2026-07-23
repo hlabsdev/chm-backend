@@ -42,12 +42,13 @@ class ChoraleFilterMixin:
         """
         Injecte automatiquement la chorale du user connecté lors de la création.
 
-        `serializer.save(chorale=...)` fonctionne même si le serializer n'expose
-        PAS de champ `chorale` : DRF fusionne les kwargs de save() dans les
-        validated_data passées à Model.objects.create(). C'est volontaire — les
-        serializers n'exposent pas `chorale` (déduite du tenant, jamais fournie
-        par le client). Ne PAS conditionner l'injection à la présence du champ :
-        sinon la FK chorale (NOT NULL) reste vide et la création échoue.
+        On injecte via `serializer.save(chorale=...)` — ce qui fonctionne même
+        si le serializer n'expose pas de champ `chorale` (DRF fusionne les kwargs
+        dans les validated_data). L'injection est conditionnée à la présence d'un
+        champ `chorale` sur le MODÈLE, pas sur le serializer : certains modèles
+        rattachés à une chorale ne le sont qu'indirectement (ex. PaiementCotisation,
+        scopé via sa cotisation) et n'ont pas de FK `chorale` directe — leur passer
+        `chorale=` lèverait un TypeError.
         """
         chorale = getattr(self.request, "chorale", None)
 
@@ -56,11 +57,16 @@ class ChoraleFilterMixin:
                 "Vous devez être associé à une chorale pour créer cet élément."
             )
 
-        if chorale:
+        model = getattr(getattr(serializer, "Meta", None), "model", None)
+        model_has_chorale = model is not None and any(
+            f.name == "chorale" for f in model._meta.get_fields()
+        )
+
+        if chorale and model_has_chorale:
             serializer.save(chorale=chorale)
         else:
-            # Superuser sans chorale de contexte : la chorale doit être fournie
-            # dans la payload (cas d'administration multi-chorale).
+            # Soit le modèle n'a pas de FK chorale (rattachement indirect),
+            # soit superuser sans chorale de contexte (chorale dans la payload).
             serializer.save()
 
 
