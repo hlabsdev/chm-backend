@@ -117,8 +117,15 @@ class DashboardStatsView(APIView):
         programme = []
         if rep_programme:
             programme = [
-                {"titre": sc.chant.titre, "statut": sc.statut}
-                for sc in rep_programme.chants_travailles.select_related("chant")
+                {
+                    "titre": sc.chant.titre,
+                    "compositeur": sc.chant.compositeur,
+                    "style": sc.chant.style,
+                    "statut": sc.statut,
+                    "themes": list(sc.chant.themes.values_list("nom", flat=True)),
+                    "notes": sc.notes,
+                }
+                for sc in rep_programme.chants_travailles.select_related("chant").prefetch_related("chant__themes")
             ]
 
         # Solde de caisse : visible uniquement bureau / trésorier / admin.

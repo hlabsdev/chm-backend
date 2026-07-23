@@ -119,6 +119,42 @@ class TestDashboard:
         d1 = auth_client(choriste).get("/api/core/dashboard/")
         assert d1.data["cotisation_status"] == "Impayée"
 
+    def test_dashboard_programme_enrichi_compositeur_themes_notes(
+        self, auth_client, membre_factory, mandat_factory, chorale_a
+    ):
+        """
+        La carte Programme du dashboard staff ne se limite plus à titre+statut :
+        compositeur, style, thèmes (tags) et notes de séance doivent apparaître.
+        """
+        from musique.models import Chant, SeanceChant, Theme
+        from presences.models import Repetition
+
+        mdc = membre_factory(chorale_a)
+        mandat_factory(mdc, "maitre_choeur")
+
+        theme = Theme.objects.create(chorale=chorale_a, nom="Noël")
+        chant = Chant.objects.create(
+            chorale=chorale_a, titre="Douce Nuit", compositeur="F. Gruber",
+            style=Chant.Style.LITURGIQUE,
+        )
+        chant.themes.add(theme)
+        rep = Repetition.objects.create(chorale=chorale_a, date="2026-12-20", heure_debut="19:00")
+        SeanceChant.objects.create(
+            chorale=chorale_a, repetition=rep, chant=chant,
+            statut=SeanceChant.StatutApprentissage.EN_TRAVAIL,
+            notes="Attention à la respiration au refrain.",
+        )
+
+        resp = auth_client(mdc).get("/api/core/dashboard/")
+
+        assert resp.status_code == 200
+        item = resp.data["programme"][0]
+        assert item["titre"] == "Douce Nuit"
+        assert item["compositeur"] == "F. Gruber"
+        assert item["style"] == "liturgique"
+        assert item["themes"] == ["Noël"]
+        assert item["notes"] == "Attention à la respiration au refrain."
+
     def test_superuser_dashboard_neutre_pas_400(self, db):
         User.objects.create_superuser("admin_it", "admin@it.test", "adminpass123")
         client = APIClient()
