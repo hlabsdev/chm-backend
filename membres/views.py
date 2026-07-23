@@ -5,6 +5,8 @@ API REST pour la gestion des pupitres, postes, membres et mandats.
 Tous les ViewSets utilisent ChoraleFilterMixin pour l'isolation par chorale.
 """
 
+from django.contrib.auth.models import Group
+from django.db.models import Prefetch
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -15,6 +17,7 @@ from core.permissions import IsBureau, IsBureauOrMaitreChoeur, IsMembreActif
 from .filters import MembreFilter
 from .models import Mandat, Membre, Poste, Pupitre
 from .serializers import (
+    GroupeSerializer,
     MandatSerializer,
     MembreCreateSerializer,
     MembreDetailSerializer,
@@ -22,6 +25,24 @@ from .serializers import (
     PosteSerializer,
     PupitreSerializer,
 )
+
+# Groupes RBAC assignables à un poste (les groupes de base membre_actif /
+# membre_honoraire sont gérés automatiquement par le statut, pas via les postes).
+_GROUPES_ASSIGNABLES = ["bureau", "tresorier", "maitre_choeur", "chef_pupitre"]
+
+
+class GroupeViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    Groupes RBAC assignables à un poste (permissions Django). Lecture réservée
+    au bureau — sert à alimenter le formulaire de gestion des postes.
+    Les groupes ne sont pas scopés chorale (partagés par la plateforme).
+    """
+    serializer_class = GroupeSerializer
+    permission_classes = [IsBureau]
+    pagination_class = None
+
+    def get_queryset(self):
+        return Group.objects.filter(name__in=_GROUPES_ASSIGNABLES).order_by("name")
 
 
 class PupitreViewSet(ChoraleFilterMixin, viewsets.ModelViewSet):
@@ -59,9 +80,50 @@ class PosteViewSet(ChoraleFilterMixin, viewsets.ModelViewSet):
     serializer_class = PosteSerializer
 
     def get_permissions(self):
-        if self.action in ["list", "retrieve"]:
+        if self.action in ["list", "retrieve", "organigramme"]:
             return [permissions.IsAuthenticated()]
         return [IsBureau()]
+
+    @action(detail=False, methods=["get"])
+    def organigramme(self, request):
+        """
+        Organigramme de la chorale : postes pourvus et leurs titulaires actifs,
+        groupés par type de poste. Lecture ouverte à tout membre (ne révèle que
+        « qui occupe quel poste », pas les notes de mandat).
+        """
+        postes = (
+            self.get_queryset()
+            .select_related("pupitre_concerne")
+            .prefetch_related(
+                Prefetch(
+                    "mandats",
+                    queryset=Mandat.objects.filter(is_active=True).select_related("membre__user"),
+                    to_attr="mandats_actifs_liste",
+                )
+            )
+            .order_by("type_poste", "nom")
+        )
+        data = []
+        for poste in postes:
+            titulaires = [
+                {
+                    "membre_id": m.membre.pk,
+                    "nom_complet": m.membre.nom_complet,
+                    "depuis": m.date_debut,
+                }
+                for m in poste.mandats_actifs_liste
+            ]
+            if not titulaires:
+                continue  # on ne montre que les postes effectivement pourvus
+            data.append({
+                "poste_id": poste.id,
+                "nom": poste.nom,
+                "type_poste": poste.type_poste,
+                "type_poste_libelle": poste.get_type_poste_display(),
+                "pupitre_concerne": poste.pupitre_concerne.nom if poste.pupitre_concerne_id else None,
+                "titulaires": titulaires,
+            })
+        return Response(data)
 
 
 class MembreViewSet(SoftDeleteMixin, ChoraleFilterMixin, viewsets.ModelViewSet):

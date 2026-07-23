@@ -4,11 +4,24 @@ ChoirManager — Membres Serializers
 Sérialiseurs DRF pour Pupitre, Poste, Membre, Mandat.
 """
 
-from django.contrib.auth.models import User
+from django.contrib.auth.models import Group, User
 from django.db import transaction
 from rest_framework import serializers
 
 from .models import Mandat, Membre, Poste, Pupitre
+
+
+# ---------------------------------------------------------------------------
+# Groupe RBAC (lecture seule) — pour l'assignation aux postes
+# ---------------------------------------------------------------------------
+
+class GroupeSerializer(serializers.ModelSerializer):
+    """Groupe Django RBAC assignable à un poste."""
+
+    class Meta:
+        model = Group
+        fields = ["id", "name"]
+        read_only_fields = fields
 
 
 # ---------------------------------------------------------------------------
@@ -44,6 +57,14 @@ class PosteSerializer(serializers.ModelSerializer):
         read_only=True,
         slug_field="name",
     )
+    # Écriture des groupes RBAC accordés par le poste (permissions Django).
+    groupes_ids = serializers.PrimaryKeyRelatedField(
+        source="groupes",
+        many=True,
+        write_only=True,
+        required=False,
+        queryset=Group.objects.all(),
+    )
     titulaire_actuel = serializers.SerializerMethodField()
 
     class Meta:
@@ -51,7 +72,7 @@ class PosteSerializer(serializers.ModelSerializer):
         fields = [
             "id", "nom", "description", "type_poste",
             "unique_actif", "pupitre_concerne",
-            "groupes_noms", "titulaire_actuel",
+            "groupes_noms", "groupes_ids", "titulaire_actuel",
             "created_at",
         ]
         read_only_fields = ["id", "created_at"]

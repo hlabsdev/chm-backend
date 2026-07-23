@@ -14,6 +14,7 @@ app_name = "membres"
 router = DefaultRouter()
 router.register(r"pupitres", views.PupitreViewSet, basename="pupitre")
 router.register(r"postes", views.PosteViewSet, basename="poste")
+router.register(r"groupes", views.GroupeViewSet, basename="groupe")
 router.register(r"mandats", views.MandatViewSet, basename="mandat")
 router.register(r"", views.MembreViewSet, basename="membre")
 
