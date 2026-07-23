@@ -5,6 +5,7 @@ Sérialiseurs DRF pour Pupitre, Poste, Membre, Mandat.
 """
 
 from django.contrib.auth.models import User
+from django.db import transaction
 from rest_framework import serializers
 
 from .models import Mandat, Membre, Poste, Pupitre
@@ -158,10 +159,66 @@ class MembreListSerializer(serializers.ModelSerializer):
         model = Membre
         fields = [
             "id", "numero_membre", "nom_complet", "email",
-            "pupitre", "pupitre_nom", "pupitre_categorie", "statut",
+            "pupitre", "pupitre_nom", "pupitre_categorie", "statut", "sexe",
             "date_adhesion", "telephone",
         ]
         read_only_fields = fields
+
+
+class MembreCreateSerializer(serializers.ModelSerializer):
+    """
+    Création d'un membre par le bureau.
+
+    Flux défini : le bureau saisit un identifiant de connexion + un mot de passe
+    provisoire (à communiquer au membre, qui pourra le changer). Le compte User
+    Django et le profil Membre sont créés atomiquement, et le `numero_membre`
+    est auto-généré à partir du préfixe de la chorale.
+    """
+    username = serializers.CharField(write_only=True, max_length=150)
+    password = serializers.CharField(write_only=True, min_length=8)
+    first_name = serializers.CharField(write_only=True, max_length=150)
+    last_name = serializers.CharField(write_only=True, max_length=150)
+    email = serializers.EmailField(write_only=True, required=False, allow_blank=True)
+
+    numero_membre = serializers.CharField(read_only=True)
+    nom_complet = serializers.CharField(source="user.get_full_name", read_only=True)
+
+    class Meta:
+        model = Membre
+        fields = [
+            "id", "username", "password", "first_name", "last_name", "email",
+            "pupitre", "statut", "sexe", "date_adhesion", "telephone",
+            "numero_membre", "nom_complet",
+        ]
+        read_only_fields = ["id", "numero_membre", "nom_complet"]
+
+    def validate_username(self, value):
+        if User.objects.filter(username=value).exists():
+            raise serializers.ValidationError("Ce nom d'utilisateur est déjà pris.")
+        return value
+
+    def validate_email(self, value):
+        if value and User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("Cette adresse email est déjà utilisée.")
+        return value
+
+    @transaction.atomic
+    def create(self, validated_data):
+        # `chorale` est injectée par ChoraleFilterMixin.perform_create.
+        chorale = validated_data.pop("chorale")
+        user = User.objects.create_user(
+            username=validated_data.pop("username"),
+            password=validated_data.pop("password"),
+            first_name=validated_data.pop("first_name"),
+            last_name=validated_data.pop("last_name"),
+            email=validated_data.pop("email", ""),
+        )
+        return Membre.objects.create(
+            user=user,
+            chorale=chorale,
+            numero_membre=Membre.generer_numero(chorale),
+            **validated_data,
+        )
 
 
 class MembreDetailSerializer(serializers.ModelSerializer):
@@ -187,7 +244,7 @@ class MembreDetailSerializer(serializers.ModelSerializer):
         fields = [
             "id", "username", "numero_membre",
             "nom_complet", "first_name", "last_name", "email",
-            "pupitre", "pupitre_nom", "pupitre_categorie", "statut",
+            "pupitre", "pupitre_nom", "pupitre_categorie", "statut", "sexe",
             "date_adhesion", "telephone", "photo", "notes",
             "mandats_actifs", "groupes",
             "is_deleted", "deleted_at", "created_at", "updated_at",

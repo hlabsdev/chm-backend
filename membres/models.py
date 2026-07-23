@@ -160,6 +160,11 @@ class Membre(SoftDeleteModel):
         HONORAIRE = "honoraire", "Honoraire"
         STAGIAIRE = "stagiaire", "Stagiaire"
 
+    class Sexe(models.TextChoices):
+        HOMME = "homme", "Homme"
+        FEMME = "femme", "Femme"
+        AUTRE = "autre", "Autre"
+
     # --- Identité ---
     user = models.OneToOneField(
         User,
@@ -177,6 +182,13 @@ class Membre(SoftDeleteModel):
         max_length=20,
         choices=Statut.choices,
         default=Statut.ACTIF,
+    )
+    sexe = models.CharField(
+        max_length=10,
+        choices=Sexe.choices,
+        blank=True,
+        verbose_name="Sexe",
+        help_text="Utilisé notamment pour les tarifs de cotisation par genre.",
     )
 
     # --- Section vocale ---

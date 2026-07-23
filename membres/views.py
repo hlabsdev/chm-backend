@@ -16,6 +16,7 @@ from .filters import MembreFilter
 from .models import Mandat, Membre, Poste, Pupitre
 from .serializers import (
     MandatSerializer,
+    MembreCreateSerializer,
     MembreDetailSerializer,
     MembreListSerializer,
     PosteSerializer,
@@ -87,6 +88,8 @@ class MembreViewSet(SoftDeleteMixin, ChoraleFilterMixin, viewsets.ModelViewSet):
     def get_serializer_class(self):
         if self.action == "list":
             return MembreListSerializer
+        if self.action == "create":
+            return MembreCreateSerializer
         return MembreDetailSerializer
 
     def get_permissions(self):

@@ -19,6 +19,7 @@ class MembreFilter(django_filters.FilterSet):
     - ?search=dupont (via SearchFilter DRF, pas ici)
     """
     statut = django_filters.ChoiceFilter(choices=Membre.Statut.choices)
+    sexe = django_filters.ChoiceFilter(choices=Membre.Sexe.choices)
     pupitre = django_filters.NumberFilter(field_name="pupitre_id")
     date_adhesion_min = django_filters.DateFilter(
         field_name="date_adhesion", lookup_expr="gte"
@@ -29,4 +30,4 @@ class MembreFilter(django_filters.FilterSet):
 
     class Meta:
         model = Membre
-        fields = ["statut", "pupitre", "date_adhesion_min", "date_adhesion_max"]
+        fields = ["statut", "sexe", "pupitre", "date_adhesion_min", "date_adhesion_max"]
