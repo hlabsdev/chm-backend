@@ -158,6 +158,34 @@ class TestMembresStructure:
         )
         assert login.status_code == 200
 
+    def test_bureau_modifie_et_soft_delete_un_membre(
+        self, auth_client, membre_factory, mandat_factory, chorale_a
+    ):
+        """1.2 : édition (User+Membre) puis suppression logique par le bureau."""
+        bureau = membre_factory(chorale_a)
+        mandat_factory(bureau, "bureau")
+        cible = membre_factory(chorale_a)
+        client = auth_client(bureau)
+
+        patch = client.patch(
+            f"/api/membres/{cible.pk}/",
+            {"first_name": "Nouveau", "telephone": "0102030405", "statut": "honoraire"},
+            format="json",
+        )
+        assert patch.status_code == 200, patch.data
+        cible.refresh_from_db()
+        cible.user.refresh_from_db()
+        assert cible.user.first_name == "Nouveau"
+        assert cible.statut == "honoraire"
+
+        # Suppression = soft-delete (le membre disparaît de la liste).
+        delete = client.delete(f"/api/membres/{cible.pk}/")
+        assert delete.status_code == 204
+        cible.refresh_from_db()
+        assert cible.is_deleted is True
+        liste = client.get("/api/membres/?page_size=100")
+        assert cible.pk not in [m["id"] for m in liste.data["results"]]
+
     def test_membre_simple_ne_cree_pas_de_pupitre(self, auth_client, membre_factory, chorale_a):
         membre = membre_factory(chorale_a)
         client = auth_client(membre)
