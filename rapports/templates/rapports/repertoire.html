@@ -1,0 +1,24 @@
+{% extends "rapports/base.html" %}
+{% block contenu %}
+  <div style="margin-bottom: 16px;">
+    <div class="kpi"><div class="val">{{ data.total }}</div><div class="lbl">Chants au répertoire</div></div>
+  </div>
+
+  <h2>Par statut d'apprentissage</h2>
+  <table>
+    <tr><th>Statut</th><th class="num">Chants</th></tr>
+    {% for s in data.par_statut %}
+      <tr><td>{{ s.statut }}</td><td class="num">{{ s.count }}</td></tr>
+    {% endfor %}
+  </table>
+
+  <h2>Par thème</h2>
+  {% if data.par_theme %}
+    <table>
+      <tr><th>Thème</th><th class="num">Chants</th></tr>
+      {% for t in data.par_theme %}
+        <tr><td>{{ t.theme }}</td><td class="num">{{ t.count }}</td></tr>
+      {% endfor %}
+    </table>
+  {% else %}<p class="vide">Aucun thème défini.</p>{% endif %}
+{% endblock %}

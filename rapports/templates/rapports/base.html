@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <style>
+    @page { size: A4; margin: 1.8cm 1.5cm; }
+    * { font-family: "Helvetica Neue", Arial, sans-serif; }
+    body { color: #1f2937; font-size: 11px; }
+    .entete { border-bottom: 2px solid #4f46e5; padding-bottom: 10px; margin-bottom: 18px; }
+    .entete .chorale { font-size: 18px; font-weight: bold; color: #312e81; }
+    .entete .titre { font-size: 14px; color: #4f46e5; margin-top: 2px; }
+    .entete .meta { font-size: 9px; color: #6b7280; margin-top: 4px; }
+    h2 { font-size: 12px; color: #312e81; border-bottom: 1px solid #e5e7eb; padding-bottom: 3px; margin: 16px 0 8px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+    th { text-align: left; background: #eef2ff; color: #3730a3; font-size: 9px; text-transform: uppercase; letter-spacing: 0.04em; padding: 5px 7px; }
+    td { padding: 4px 7px; border-bottom: 1px solid #f1f5f9; }
+    td.num, th.num { text-align: right; }
+    .total-row td { font-weight: bold; border-top: 1.5px solid #cbd5e1; background: #f8fafc; }
+    .kpi { display: inline-block; margin-right: 24px; }
+    .kpi .val { font-size: 16px; font-weight: bold; color: #312e81; }
+    .kpi .lbl { font-size: 8px; text-transform: uppercase; color: #6b7280; letter-spacing: 0.05em; }
+    .vide { color: #9ca3af; font-style: italic; }
+    .pied { position: fixed; bottom: -1cm; left: 0; right: 0; text-align: center; font-size: 8px; color: #9ca3af; }
+  </style>
+</head>
+<body>
+  <div class="entete">
+    <div class="chorale">{{ chorale_nom }}</div>
+    <div class="titre">{{ titre }}</div>
+    <div class="meta">
+      {% if periode_texte %}{{ periode_texte }} · {% endif %}Généré le {{ genere_le }}
+    </div>
+  </div>
+
+  {% block contenu %}{% endblock %}
+
+  <div class="pied">ChoirManager — {{ chorale_nom }} — document interne</div>
+</body>
+</html>

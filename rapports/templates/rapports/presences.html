@@ -1,0 +1,32 @@
+{% extends "rapports/base.html" %}
+{% block contenu %}
+  <div style="margin-bottom: 16px;">
+    <div class="kpi"><div class="val">{{ data.nombre_repetitions }}</div><div class="lbl">Répétitions</div></div>
+    <div class="kpi"><div class="val">{% if data.taux_global is not None %}{{ data.taux_global }} %{% else %}—{% endif %}</div><div class="lbl">Taux global</div></div>
+  </div>
+
+  <h2>Assiduité par pupitre</h2>
+  {% if data.par_pupitre %}
+    <table>
+      <tr><th>Pupitre</th><th class="num">Pointages</th><th class="num">Présents/Retards</th><th class="num">Taux</th></tr>
+      {% for p in data.par_pupitre %}
+        <tr><td>{{ p.pupitre }}</td><td class="num">{{ p.total }}</td><td class="num">{{ p.presents_retards }}</td><td class="num">{{ p.taux }} %</td></tr>
+      {% endfor %}
+    </table>
+  {% else %}<p class="vide">Aucun pointage sur la période.</p>{% endif %}
+
+  <h2>Assiduité par membre</h2>
+  {% if data.par_membre %}
+    <table>
+      <tr><th>Membre</th><th>Pupitre</th><th class="num">Prés.</th><th class="num">Ret.</th><th class="num">Abs.</th><th class="num">Perm.</th><th class="num">Taux</th></tr>
+      {% for m in data.par_membre %}
+        <tr>
+          <td>{{ m.membre }}</td><td>{{ m.pupitre }}</td>
+          <td class="num">{{ m.presents }}</td><td class="num">{{ m.retards }}</td>
+          <td class="num">{{ m.absents }}</td><td class="num">{{ m.permissions }}</td>
+          <td class="num">{{ m.taux }} %</td>
+        </tr>
+      {% endfor %}
+    </table>
+  {% else %}<p class="vide">Aucun pointage sur la période.</p>{% endif %}
+{% endblock %}

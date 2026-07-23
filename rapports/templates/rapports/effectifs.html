@@ -1,0 +1,30 @@
+{% extends "rapports/base.html" %}
+{% block contenu %}
+  <div style="margin-bottom: 16px;">
+    <div class="kpi"><div class="val">{{ data.total }}</div><div class="lbl">Membres (non supprimés)</div></div>
+  </div>
+
+  <h2>Par pupitre</h2>
+  <table>
+    <tr><th>Pupitre</th><th class="num">Effectif</th></tr>
+    {% for p in data.par_pupitre %}
+      <tr><td>{{ p.pupitre }}</td><td class="num">{{ p.count }}</td></tr>
+    {% endfor %}
+  </table>
+
+  <h2>Par statut</h2>
+  <table>
+    <tr><th>Statut</th><th class="num">Effectif</th></tr>
+    {% for s in data.par_statut %}
+      <tr><td>{{ s.statut }}</td><td class="num">{{ s.count }}</td></tr>
+    {% endfor %}
+  </table>
+
+  <h2>Par sexe</h2>
+  <table>
+    <tr><th>Sexe</th><th class="num">Effectif</th></tr>
+    {% for s in data.par_sexe %}
+      <tr><td>{{ s.sexe }}</td><td class="num">{{ s.count }}</td></tr>
+    {% endfor %}
+  </table>
+{% endblock %}

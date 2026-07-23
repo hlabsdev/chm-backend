@@ -18,6 +18,10 @@ Pillow>=10.0
 # Utilitaires
 python-decouple>=3.8
 
+# Rapports — génération PDF (nécessite les libs système GTK/Pango/Cairo au runtime :
+# Linux `apt install libpango-1.0-0 libpangocairo-1.0-0`, Windows via le runtime GTK3).
+weasyprint>=65,<70
+
 # Tests
 pytest>=8.0
 pytest-django>=4.8
