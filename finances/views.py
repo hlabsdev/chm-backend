@@ -6,7 +6,9 @@ API REST pour la gestion financière : journal, campagnes, cotisations, paiement
 
 from datetime import date
 
+from django.db import transaction
 from django.db.models import Q, Sum
+from django.utils import timezone
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -173,6 +175,68 @@ class CotisationViewSet(ChoraleFilterMixin, viewsets.ModelViewSet):
         cotisation.statut = Cotisation.StatutCotisation.EXONERE
         cotisation.save(update_fields=["statut", "updated_at"])
         return Response(CotisationSerializer(cotisation).data)
+
+    def _cotisations_selection(self, request):
+        """
+        Résout la liste d'IDs demandée en cotisations réellement accessibles
+        (isolation tenant incluse, via get_queryset). Les IDs absents/hors
+        périmètre sont silencieusement ignorés — jamais une erreur 404 globale
+        qui bloquerait le reste du lot.
+        """
+        ids = request.data.get("ids", [])
+        if not isinstance(ids, list) or not ids:
+            return None
+        return list(self.get_queryset().filter(pk__in=ids))
+
+    @action(detail=False, methods=["post"], url_path="bulk-exonerer")
+    def bulk_exonerer(self, request):
+        """POST {"ids": [1,2,3]} → exonère chaque cotisation du lot."""
+        cotisations = self._cotisations_selection(request)
+        if cotisations is None:
+            return Response({"detail": "Liste d'ids requise."}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            for c in cotisations:
+                c.statut = Cotisation.StatutCotisation.EXONERE
+            Cotisation.objects.bulk_update(cotisations, ["statut"])
+
+        return Response({"detail": f"{len(cotisations)} cotisation(s) exonérée(s).", "count": len(cotisations)})
+
+    @action(detail=False, methods=["post"], url_path="bulk-encaisser")
+    def bulk_encaisser(self, request):
+        """
+        POST {"ids": [1,2,3]} → encaisse le solde restant de chaque cotisation
+        du lot (crée un PaiementCotisation + Mouvement par cotisation, dans
+        UNE transaction : soit tout est encaissé, soit rien ne l'est).
+        """
+        cotisations = self._cotisations_selection(request)
+        if cotisations is None:
+            return Response({"detail": "Liste d'ids requise."}, status=status.HTTP_400_BAD_REQUEST)
+
+        cibles = [c for c in cotisations if c.reste_a_payer > 0]
+        today = timezone.now().date().isoformat()
+        created = []
+        try:
+            with transaction.atomic():
+                for c in cibles:
+                    serializer = PaiementCotisationSerializer(
+                        data={
+                            "cotisation": c.id,
+                            "montant": str(c.reste_a_payer),
+                            "date_paiement": today,
+                        },
+                        context={"request": request},
+                    )
+                    serializer.is_valid(raise_exception=True)
+                    serializer.save()
+                    created.append(c.id)
+        except Exception:
+            return Response(
+                {"detail": "Encaissement groupé impossible — aucune cotisation n'a été modifiée."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response({"detail": f"{len(created)} cotisation(s) encaissée(s).", "count": len(created)})
 
 
 class PaiementCotisationViewSet(ChoraleFilterMixin, viewsets.ModelViewSet):

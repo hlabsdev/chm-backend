@@ -464,6 +464,66 @@ class TestFinances:
         assert liste.status_code == 200
         assert all(c["membre"] == m1.pk for c in liste.data["results"])
 
+    def test_bulk_exonerer_et_bulk_encaisser_cotisations(
+        self, auth_client, membre_factory, mandat_factory, chorale_a
+    ):
+        """Actions groupées serveur : un seul appel HTTP pour N cotisations."""
+        tresorier = membre_factory(chorale_a)
+        mandat_factory(tresorier, "tresorier")
+        m1 = membre_factory(chorale_a); m2 = membre_factory(chorale_a); m3 = membre_factory(chorale_a)
+        client = auth_client(tresorier)
+
+        camp = client.post(
+            "/api/finances/campagnes/",
+            {"nom": "Bulk", "type_campagne": "annuelle", "montant_unitaire": "10.00", "date_debut": "2026-01-01"},
+            format="json",
+        ).data
+        client.post(f"/api/finances/campagnes/{camp['id']}/generer/")
+        cots = client.get(f"/api/finances/cotisations/?campagne={camp['id']}").data["results"]
+        ids = [c["id"] for c in cots]
+
+        exo = client.post("/api/finances/cotisations/bulk-exonerer/", {"ids": ids[:1]}, format="json")
+        assert exo.status_code == 200
+        assert exo.data["count"] == 1
+
+        encaisse = client.post("/api/finances/cotisations/bulk-encaisser/", {"ids": ids[1:]}, format="json")
+        assert encaisse.status_code == 200
+        assert encaisse.data["count"] == len(ids) - 1
+
+        refreshed = {c["id"]: c for c in client.get(f"/api/finances/cotisations/?campagne={camp['id']}").data["results"]}
+        assert refreshed[ids[0]]["statut"] == "exonere"
+        for i in ids[1:]:
+            assert refreshed[i]["statut"] == "paye"
+
+        # Un mouvement de caisse créé par cotisation encaissée.
+        mvts = client.get("/api/finances/mouvements/?sens=entree").data
+        assert mvts["count"] >= len(ids) - 1
+
+    def test_bulk_approuver_permissions(
+        self, auth_client, membre_factory, mandat_factory, chorale_a
+    ):
+        """Approbation groupée : demandes déjà traitées ignorées, pas bloquantes."""
+        mdc = membre_factory(chorale_a)
+        mandat_factory(mdc, "maitre_choeur")
+        m1 = membre_factory(chorale_a); m2 = membre_factory(chorale_a)
+        c1, c2 = auth_client(m1), auth_client(m2)
+        d1 = c1.post("/api/presences/permissions/", {"date_debut": "2026-08-01", "date_fin": "2026-08-02", "motif": "x"}, format="json").data
+        d2 = c2.post("/api/presences/permissions/", {"date_debut": "2026-08-03", "date_fin": "2026-08-04", "motif": "y"}, format="json").data
+
+        client_mdc = auth_client(mdc)
+        resp = client_mdc.post(
+            "/api/presences/permissions/bulk-approuver/", {"ids": [d1["id"], d2["id"]]}, format="json"
+        )
+        assert resp.status_code == 200
+        assert resp.data["count"] == 2
+
+        # Rejouer sur les mêmes ids : déjà traitées → 0, pas d'erreur.
+        replay = client_mdc.post(
+            "/api/presences/permissions/bulk-approuver/", {"ids": [d1["id"], d2["id"]]}, format="json"
+        )
+        assert replay.status_code == 200
+        assert replay.data["count"] == 0
+
     def test_tarifs_par_sexe_appliques_a_la_generation(
         self, auth_client, membre_factory, mandat_factory, chorale_a
     ):

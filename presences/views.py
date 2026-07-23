@@ -231,3 +231,39 @@ class PermissionRequestViewSet(ChoraleFilterMixin, viewsets.ModelViewSet):
         demande.save()
 
         return Response({"detail": "Demande refusée."})
+
+    def _bulk_traiter(self, request, nouveau_statut):
+        """
+        Traite en lot les demandes en_attente dont l'id figure dans
+        {"ids": [...]}. Les demandes déjà traitées ou hors périmètre
+        (isolation tenant via get_queryset) sont ignorées, pas bloquantes.
+        """
+        ids = request.data.get("ids", [])
+        if not isinstance(ids, list) or not ids:
+            return Response({"detail": "Liste d'ids requise."}, status=status.HTTP_400_BAD_REQUEST)
+
+        demandes = list(
+            self.get_queryset().filter(
+                pk__in=ids, statut=PermissionRequest.StatutDemande.EN_ATTENTE
+            )
+        )
+        now = timezone.now()
+        for d in demandes:
+            d.statut = nouveau_statut
+            d.traitee_par = request.user.membre
+            d.date_traitement = now
+        PermissionRequest.objects.bulk_update(demandes, ["statut", "traitee_par", "date_traitement"])
+
+        return Response({"detail": f"{len(demandes)} demande(s) traitée(s).", "count": len(demandes)})
+
+    @action(detail=False, methods=["post"], url_path="bulk-approuver",
+            permission_classes=[IsBureauOrMaitreChoeur])
+    def bulk_approuver(self, request):
+        """POST {"ids": [1,2,3]} → approuve chaque demande en attente du lot."""
+        return self._bulk_traiter(request, PermissionRequest.StatutDemande.APPROUVEE)
+
+    @action(detail=False, methods=["post"], url_path="bulk-refuser",
+            permission_classes=[IsBureauOrMaitreChoeur])
+    def bulk_refuser(self, request):
+        """POST {"ids": [1,2,3]} → refuse chaque demande en attente du lot."""
+        return self._bulk_traiter(request, PermissionRequest.StatutDemande.REFUSEE)
