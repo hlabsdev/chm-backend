@@ -51,6 +51,7 @@ INSTALLED_APPS = [
     "presences.apps.PresencesConfig",
     "finances.apps.FinancesConfig",
     "communications.apps.CommunicationsConfig",
+    "rapports.apps.RapportsConfig",
 ]
 
 # ---------------------------------------------------------------------------
