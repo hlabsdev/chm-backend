@@ -247,6 +247,40 @@ class TestMusique:
         )
         assert resp.status_code == 403
 
+    def test_themes_creation_et_filtre_repertoire(
+        self, auth_client, membre_factory, mandat_factory, chorale_a
+    ):
+        """
+        Thèmes = tags réutilisables sur les chants (ex. « Noël », « Louange »),
+        pour regrouper et filtrer le répertoire selon le thème d'un culte.
+        """
+        mdc = membre_factory(chorale_a)
+        mandat_factory(mdc, "maitre_choeur")
+        client = auth_client(mdc)
+
+        noel = client.post("/api/musique/themes/", {"nom": "Noël"}, format="json")
+        louange = client.post("/api/musique/themes/", {"nom": "Louange"}, format="json")
+        assert noel.status_code == 201 and louange.status_code == 201
+
+        chant_noel = client.post(
+            "/api/musique/chants/",
+            {"titre": "Douce nuit", "style": "traditionnel", "themes_ids": [noel.data["id"]]},
+            format="json",
+        )
+        assert chant_noel.status_code == 201, chant_noel.data
+        assert chant_noel.data["themes"][0]["nom"] == "Noël"
+
+        client.post(
+            "/api/musique/chants/",
+            {"titre": "Gloire à Dieu", "style": "gospel", "themes_ids": [louange.data["id"]]},
+            format="json",
+        )
+
+        filtre = client.get(f"/api/musique/chants/?themes={noel.data['id']}")
+        assert filtre.status_code == 200
+        assert filtre.data["count"] == 1
+        assert filtre.data["results"][0]["titre"] == "Douce nuit"
+
     def test_upload_partition_et_suivi_apprentissage(
         self, auth_client, membre_factory, mandat_factory, chorale_a, settings, tmp_path
     ):

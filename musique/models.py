@@ -10,6 +10,25 @@ from django.db import models
 from core.models import ChoraleOwnedModel, SoftDeleteModel
 
 
+class Theme(ChoraleOwnedModel):
+    """
+    Thème / thématique d'un chant, utilisé comme tag réutilisable
+    (ex. « Noël », « Louange », « Communion », « Envoi »).
+    Permet de regrouper les morceaux et de choisir un répertoire liturgique
+    selon le thème d'un culte.
+    """
+    nom = models.CharField(max_length=80, verbose_name="Thème")
+
+    class Meta:
+        ordering = ["nom"]
+        unique_together = ["chorale", "nom"]
+        verbose_name = "Thème"
+        verbose_name_plural = "Thèmes"
+
+    def __str__(self):
+        return self.nom
+
+
 class Chant(SoftDeleteModel):
     """
     Morceau du répertoire de la chorale.
@@ -42,6 +61,13 @@ class Chant(SoftDeleteModel):
     notes = models.TextField(
         blank=True,
         help_text="Notes sur le chant, consignes d'interprétation, etc."
+    )
+    themes = models.ManyToManyField(
+        Theme,
+        blank=True,
+        related_name="chants",
+        verbose_name="Thèmes",
+        help_text="Thématiques du chant (tags), pour regrouper et filtrer le répertoire.",
     )
 
     class Meta:

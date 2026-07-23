@@ -9,13 +9,25 @@ from rest_framework import viewsets, permissions
 from core.mixins import ChoraleFilterMixin, SoftDeleteMixin
 from core.permissions import IsBureauOrMaitreChoeur
 
-from .models import Chant, Partition, SeanceChant
+from .models import Chant, Partition, SeanceChant, Theme
 from .serializers import (
     ChantDetailSerializer,
     ChantListSerializer,
     PartitionSerializer,
     SeanceChantSerializer,
+    ThemeSerializer,
 )
+
+
+class ThemeViewSet(ChoraleFilterMixin, viewsets.ModelViewSet):
+    """API Thèmes (tags) du répertoire. Écriture : bureau ou maître de chœur."""
+    queryset = Theme.objects.all()
+    serializer_class = ThemeSerializer
+
+    def get_permissions(self):
+        if self.action in ["list", "retrieve"]:
+            return [permissions.IsAuthenticated()]
+        return [IsBureauOrMaitreChoeur()]
 
 
 class ChantViewSet(SoftDeleteMixin, ChoraleFilterMixin, viewsets.ModelViewSet):
@@ -28,7 +40,7 @@ class ChantViewSet(SoftDeleteMixin, ChoraleFilterMixin, viewsets.ModelViewSet):
     queryset = Chant.objects.all()
     search_fields = ["titre", "compositeur"]
     ordering_fields = ["titre", "style", "created_at"]
-    filterset_fields = ["style"]
+    filterset_fields = ["style", "themes"]
 
     def get_serializer_class(self):
         if self.action == "list":

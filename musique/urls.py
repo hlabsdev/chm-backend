@@ -13,6 +13,7 @@ app_name = "musique"
 
 router = DefaultRouter()
 router.register(r"chants", views.ChantViewSet, basename="chant")
+router.register(r"themes", views.ThemeViewSet, basename="theme")
 router.register(r"partitions", views.PartitionViewSet, basename="partition")
 router.register(r"seances-chants", views.SeanceChantViewSet, basename="seance-chant")
 

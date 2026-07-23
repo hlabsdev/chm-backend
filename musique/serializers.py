@@ -5,7 +5,16 @@ ChoirManager — Musique Serializers
 
 from rest_framework import serializers
 
-from .models import Chant, Partition, SeanceChant
+from .models import Chant, Partition, SeanceChant, Theme
+
+
+class ThemeSerializer(serializers.ModelSerializer):
+    nombre_chants = serializers.IntegerField(source="chants.count", read_only=True)
+
+    class Meta:
+        model = Theme
+        fields = ["id", "nom", "nombre_chants"]
+        read_only_fields = ["id", "nombre_chants"]
 
 
 class PartitionSerializer(serializers.ModelSerializer):
@@ -27,12 +36,13 @@ class PartitionSerializer(serializers.ModelSerializer):
 class ChantListSerializer(serializers.ModelSerializer):
     """Sérialiseur léger pour les listes du répertoire."""
     nombre_partitions = serializers.IntegerField(read_only=True)
+    themes = ThemeSerializer(many=True, read_only=True)
 
     class Meta:
         model = Chant
         fields = [
             "id", "titre", "compositeur", "style",
-            "tonalite", "nombre_partitions",
+            "tonalite", "nombre_partitions", "themes",
         ]
         read_only_fields = fields
 
@@ -41,13 +51,18 @@ class ChantDetailSerializer(serializers.ModelSerializer):
     """Sérialiseur complet avec les partitions imbriquées."""
     partitions = PartitionSerializer(many=True, read_only=True)
     dernier_statut = serializers.SerializerMethodField()
+    themes = ThemeSerializer(many=True, read_only=True)
+    themes_ids = serializers.PrimaryKeyRelatedField(
+        many=True, write_only=True, required=False, source="themes",
+        queryset=Theme.objects.all(),
+    )
 
     class Meta:
         model = Chant
         fields = [
             "id", "titre", "compositeur", "style",
             "tonalite", "tempo", "notes",
-            "partitions", "dernier_statut",
+            "partitions", "dernier_statut", "themes", "themes_ids",
             "is_deleted", "created_at", "updated_at",
         ]
         read_only_fields = ["id", "is_deleted", "created_at", "updated_at"]
