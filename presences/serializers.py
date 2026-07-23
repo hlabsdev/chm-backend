@@ -14,11 +14,12 @@ class PresenceSerializer(serializers.ModelSerializer):
     membre_pupitre = serializers.CharField(
         source="membre.pupitre.nom", read_only=True, default=None
     )
+    repetition_date = serializers.DateField(source="repetition.date", read_only=True)
 
     class Meta:
         model = Presence
         fields = [
-            "id", "repetition", "membre", "membre_nom",
+            "id", "repetition", "repetition_date", "membre", "membre_nom",
             "membre_pupitre", "statut", "motif", "created_at",
         ]
         read_only_fields = ["id", "created_at"]
@@ -86,7 +87,13 @@ class PermissionRequestSerializer(serializers.ModelSerializer):
             "traitee_par", "traitee_par_nom", "date_traitement",
             "created_at",
         ]
-        read_only_fields = ["id", "traitee_par", "date_traitement", "created_at"]
+        # `membre` (déduit de l'utilisateur connecté via perform_create) et
+        # `statut` (toujours « en_attente » à la création, modifié uniquement
+        # via les actions approuver/refuser) ne sont jamais fournis par le client.
+        read_only_fields = [
+            "id", "membre", "statut",
+            "traitee_par", "date_traitement", "created_at",
+        ]
 
     def validate(self, data):
         if data.get("date_fin") and data.get("date_debut"):

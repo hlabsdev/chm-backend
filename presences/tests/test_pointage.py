@@ -26,6 +26,63 @@ def repetition_factory(db):
     return _make
 
 
+def test_flux_demande_de_permission(
+    auth_client, membre_factory, mandat_factory, chorale_a
+):
+    """2.3 : un membre soumet une demande d'absence, le MDC l'approuve."""
+    membre = membre_factory(chorale_a)
+    mdc = membre_factory(chorale_a)
+    mandat_factory(mdc, "maitre_choeur")
+
+    client_membre = auth_client(membre)
+    demande = client_membre.post(
+        "/api/presences/permissions/",
+        {"date_debut": "2026-08-01", "date_fin": "2026-08-03", "motif": "Voyage"},
+        format="json",
+    )
+    assert demande.status_code == 201, demande.data
+    assert demande.data["statut"] == "en_attente"
+    demande_id = demande.data["id"]
+
+    # Le membre ne peut pas approuver sa propre demande.
+    refus = client_membre.post(f"/api/presences/permissions/{demande_id}/approuver/")
+    assert refus.status_code == 403
+
+    # Le MDC approuve.
+    client_mdc = auth_client(mdc)
+    ok = client_mdc.post(f"/api/presences/permissions/{demande_id}/approuver/")
+    assert ok.status_code == 200
+
+    from presences.models import PermissionRequest
+    assert PermissionRequest.objects.get(pk=demande_id).statut == "approuvee"
+
+
+def test_confidentialite_liste_permissions(
+    auth_client, membre_factory, mandat_factory, chorale_a
+):
+    """Un membre lambda ne voit que ses demandes ; le MDC voit tout."""
+    m1 = membre_factory(chorale_a)
+    m2 = membre_factory(chorale_a)
+    mdc = membre_factory(chorale_a)
+    mandat_factory(mdc, "maitre_choeur")
+
+    for membre in (m1, m2):
+        auth_client(membre).post(
+            "/api/presences/permissions/",
+            {"date_debut": "2026-08-01", "date_fin": "2026-08-02", "motif": "x"},
+            format="json",
+        )
+
+    # m1 ne voit que sa propre demande.
+    liste_m1 = auth_client(m1).get("/api/presences/permissions/")
+    assert liste_m1.data["count"] == 1
+    assert liste_m1.data["results"][0]["membre"] == m1.pk
+
+    # Le MDC voit les deux.
+    liste_mdc = auth_client(mdc).get("/api/presences/permissions/")
+    assert liste_mdc.data["count"] == 2
+
+
 def test_mdc_cree_une_repetition_avec_chorale_injectee(
     auth_client, membre_factory, mandat_factory, chorale_a
 ):

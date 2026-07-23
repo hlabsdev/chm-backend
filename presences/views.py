@@ -174,6 +174,22 @@ class PermissionRequestViewSet(ChoraleFilterMixin, viewsets.ModelViewSet):
             return [permissions.IsAuthenticated()]
         return [IsBureauOrMaitreChoeur()]
 
+    def get_queryset(self):
+        """
+        Confidentialité : seuls les valideurs (bureau / maître de chœur / super
+        admin) voient toutes les demandes de la chorale. Un membre lambda ne voit
+        que SES propres demandes — sinon il lirait les motifs d'absence des autres.
+        """
+        qs = super().get_queryset()
+        user = self.request.user
+        if user.is_superuser:
+            return qs
+        groupes = set(user.groups.values_list("name", flat=True))
+        if groupes & {"bureau", "maitre_choeur"}:
+            return qs
+        membre = getattr(user, "membre", None)
+        return qs.filter(membre=membre) if membre is not None else qs.none()
+
     def perform_create(self, serializer):
         """Le membre connecté est automatiquement le demandeur."""
         chorale = getattr(self.request, "chorale", None)
