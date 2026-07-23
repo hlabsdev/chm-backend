@@ -79,6 +79,23 @@ class TestDashboard:
         assert resp.status_code == 200
         assert "role" in resp.data
 
+    def test_dashboard_solde_visible_tresorier_pas_mdc(
+        self, auth_client, membre_factory, mandat_factory, chorale_a
+    ):
+        """Le solde n'apparaît que pour le staff finance (pas pour un MDC)."""
+        tresorier = membre_factory(chorale_a)
+        mandat_factory(tresorier, "tresorier")
+        mdc = membre_factory(chorale_a)
+        mandat_factory(mdc, "maitre_choeur")
+
+        d_tres = auth_client(tresorier).get("/api/core/dashboard/")
+        assert d_tres.status_code == 200
+        assert d_tres.data.get("solde") is not None
+
+        d_mdc = auth_client(mdc).get("/api/core/dashboard/")
+        assert d_mdc.status_code == 200
+        assert d_mdc.data.get("solde") is None
+
     def test_superuser_dashboard_neutre_pas_400(self, db):
         User.objects.create_superuser("admin_it", "admin@it.test", "adminpass123")
         client = APIClient()

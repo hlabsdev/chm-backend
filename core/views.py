@@ -39,7 +39,9 @@ class DashboardStatsView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        is_staff = request.user.is_superuser or request.user.groups.filter(name__in=["bureau", "maitre_choeur"]).exists()
+        is_staff = request.user.is_superuser or request.user.groups.filter(
+            name__in=["bureau", "maitre_choeur", "tresorier"]
+        ).exists()
 
         now = timezone.now()
         prochaine_rep = Repetition.objects.filter(chorale=chorale, date__gte=now.date()).order_by('date', 'heure_debut').first()
@@ -74,7 +76,7 @@ class DashboardStatsView(APIView):
         # Vue Staff
         membres_actifs = Membre.objects.filter(chorale=chorale, statut=Membre.Statut.ACTIF).count()
         chants_actifs = Chant.objects.filter(chorale=chorale).count()
-        
+
         rep_data = None
         if prochaine_rep:
             rep_data = {
@@ -82,6 +84,34 @@ class DashboardStatsView(APIView):
                 "heure": prochaine_rep.heure_debut,
                 "lieu": prochaine_rep.lieu
             }
+
+        # Taux de présence moyen sur les 4 dernières répétitions pointées (réel).
+        dernieres_reps = Repetition.objects.filter(chorale=chorale).order_by("-date")[:4]
+        taux_list = [r.taux_presence for r in dernieres_reps if r.taux_presence is not None]
+        taux_moyen = round(sum(taux_list) / len(taux_list), 1) if taux_list else 0
+
+        # Programme : chants travaillés à la prochaine séance (ou à la dernière).
+        from musique.models import SeanceChant  # noqa: F401 (évite un import circulaire au chargement)
+        rep_programme = prochaine_rep or dernieres_reps[0] if dernieres_reps else prochaine_rep
+        programme = []
+        if rep_programme:
+            programme = [
+                {"titre": sc.chant.titre, "statut": sc.statut}
+                for sc in rep_programme.chants_travailles.select_related("chant")
+            ]
+
+        # Solde de caisse : visible uniquement bureau / trésorier / admin.
+        is_finance = request.user.is_superuser or request.user.groups.filter(
+            name__in=["bureau", "tresorier"]
+        ).exists()
+        solde = None
+        if is_finance:
+            from django.db.models import Sum as _Sum
+            from finances.models import Mouvement
+            mvts = Mouvement.objects.filter(chorale=chorale, is_deleted=False)
+            entrees = mvts.filter(sens="entree").aggregate(t=_Sum("montant"))["t"] or 0
+            sorties = mvts.filter(sens="sortie").aggregate(t=_Sum("montant"))["t"] or 0
+            solde = entrees - sorties
         
         # Demandes d'absence
         demandes = PermissionRequest.objects.filter(
@@ -115,9 +145,10 @@ class DashboardStatsView(APIView):
             "role": "staff",
             "membres_actifs": membres_actifs,
             "chants_actifs": chants_actifs,
-            "taux_presence": 85, # Mock
+            "taux_presence": taux_moyen,
             "prochaine_repetition": rep_data,
             "demandes_absence": demandes_data,
             "pupitres": pupitres_stats,
-            "programme": [] # Mock
+            "programme": programme,
+            "solde": solde,
         })
