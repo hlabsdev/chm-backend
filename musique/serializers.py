@@ -67,6 +67,24 @@ class ChantDetailSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "is_deleted", "created_at", "updated_at"]
 
+    def __init__(self, *args, **kwargs):
+        """
+        Restreint les thèmes assignables à ceux de la chorale courante.
+        Sans ce filtre, un membre pourrait taguer son chant avec le thème
+        (id deviné) d'une AUTRE chorale — fuite cross-tenant via une
+        relation M2M non scopée par défaut par PrimaryKeyRelatedField.
+        """
+        super().__init__(*args, **kwargs)
+        request = self.context.get("request")
+        # `request.chorale` est un SimpleLazyObject : on teste la véracité
+        # (jamais `is not None`, cf. core/mixins.py) pour forcer l'évaluation.
+        chorale = getattr(request, "chorale", None) if request else None
+        if chorale:
+            # many=True enveloppe le PrimaryKeyRelatedField dans un
+            # ManyRelatedField : le queryset vit sur .child_relation, pas
+            # sur le champ lui-même.
+            self.fields["themes_ids"].child_relation.queryset = Theme.objects.filter(chorale=chorale)
+
     def get_dernier_statut(self, obj) -> str | None:
         """Retourne le dernier statut d'apprentissage du chant."""
         derniere_seance = (
