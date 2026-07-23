@@ -91,6 +91,10 @@ class CampagneCotisationListSerializer(serializers.ModelSerializer):
 class CotisationSerializer(serializers.ModelSerializer):
     """Sérialiseur pour les cotisations individuelles."""
     membre_nom = serializers.CharField(source="membre.nom_complet", read_only=True)
+    membre_sexe = serializers.CharField(source="membre.sexe", read_only=True, default="")
+    membre_pupitre_categorie = serializers.CharField(
+        source="membre.pupitre.categorie", read_only=True, default=None
+    )
     campagne_nom = serializers.CharField(source="campagne.nom", read_only=True)
     reste_a_payer = serializers.DecimalField(
         max_digits=10, decimal_places=2, read_only=True
@@ -101,7 +105,7 @@ class CotisationSerializer(serializers.ModelSerializer):
         model = Cotisation
         fields = [
             "id", "campagne", "campagne_nom",
-            "membre", "membre_nom",
+            "membre", "membre_nom", "membre_sexe", "membre_pupitre_categorie",
             "montant_du", "montant_paye", "statut",
             "reste_a_payer", "is_solde",
             "notes", "created_at",
