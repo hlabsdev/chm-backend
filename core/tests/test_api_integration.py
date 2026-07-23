@@ -393,6 +393,26 @@ class TestFinances:
         mouvements = client.get("/api/finances/mouvements/?sens=entree").data
         assert mouvements["count"] >= 1
 
+    def test_membre_voit_uniquement_ses_cotisations(
+        self, auth_client, membre_factory, mandat_factory, chorale_a
+    ):
+        """Un membre lambda accède à SES cotisations (200) mais pas à celles des autres."""
+        tresorier = membre_factory(chorale_a)
+        mandat_factory(tresorier, "tresorier")
+        m1 = membre_factory(chorale_a)
+        membre_factory(chorale_a)  # m2, actif
+        client_t = auth_client(tresorier)
+        camp = client_t.post(
+            "/api/finances/campagnes/",
+            {"nom": "C", "type_campagne": "annuelle", "montant_unitaire": "10.00", "date_debut": "2026-01-01"},
+            format="json",
+        ).data
+        client_t.post(f"/api/finances/campagnes/{camp['id']}/generer/")
+
+        liste = auth_client(m1).get("/api/finances/cotisations/")
+        assert liste.status_code == 200
+        assert all(c["membre"] == m1.pk for c in liste.data["results"])
+
     def test_tarifs_par_sexe_appliques_a_la_generation(
         self, auth_client, membre_factory, mandat_factory, chorale_a
     ):

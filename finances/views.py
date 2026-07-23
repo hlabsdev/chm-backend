@@ -145,8 +145,26 @@ class CotisationViewSet(ChoraleFilterMixin, viewsets.ModelViewSet):
         "campagne", "membre__user"
     ).filter(is_deleted=False)
     serializer_class = CotisationSerializer
-    permission_classes = [IsBureauOrTresorier]
     filterset_fields = ["campagne", "membre", "statut"]
+
+    def get_permissions(self):
+        # Lecture : tout membre authentifié (mais restreinte aux siennes, cf.
+        # get_queryset). Écriture : bureau ou trésorier.
+        if self.action in ["list", "retrieve"]:
+            return [permissions.IsAuthenticated()]
+        return [IsBureauOrTresorier()]
+
+    def get_queryset(self):
+        """Un membre lambda ne voit que SES cotisations ; le staff voit tout."""
+        qs = super().get_queryset()
+        user = self.request.user
+        if user.is_superuser:
+            return qs
+        groupes = set(user.groups.values_list("name", flat=True))
+        if groupes & {"bureau", "tresorier"}:
+            return qs
+        membre = getattr(user, "membre", None)
+        return qs.filter(membre=membre) if membre is not None else qs.none()
 
     @action(detail=True, methods=["post"])
     def exonerer(self, request, pk=None):
