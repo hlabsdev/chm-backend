@@ -96,6 +96,29 @@ class TestDashboard:
         assert d_mdc.status_code == 200
         assert d_mdc.data.get("solde") is None
 
+    def test_dashboard_choriste_cotisation_status_reel(
+        self, auth_client, membre_factory, mandat_factory, chorale_a
+    ):
+        """Le statut de cotisation du choriste est calculé, pas mocké."""
+        tresorier = membre_factory(chorale_a)
+        mandat_factory(tresorier, "tresorier")
+        choriste = membre_factory(chorale_a)
+
+        # Sans aucune cotisation : message neutre, pas "À jour" par défaut.
+        d0 = auth_client(choriste).get("/api/core/dashboard/")
+        assert d0.data["cotisation_status"] == "Aucune cotisation"
+
+        client_t = auth_client(tresorier)
+        camp = client_t.post(
+            "/api/finances/campagnes/",
+            {"nom": "C", "type_campagne": "annuelle", "montant_unitaire": "20.00", "date_debut": "2026-01-01"},
+            format="json",
+        ).data
+        client_t.post(f"/api/finances/campagnes/{camp['id']}/generer/")
+
+        d1 = auth_client(choriste).get("/api/core/dashboard/")
+        assert d1.data["cotisation_status"] == "Impayée"
+
     def test_superuser_dashboard_neutre_pas_400(self, db):
         User.objects.create_superuser("admin_it", "admin@it.test", "adminpass123")
         client = APIClient()

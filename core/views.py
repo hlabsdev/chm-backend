@@ -56,20 +56,41 @@ class DashboardStatsView(APIView):
                     "heure": prochaine_rep.heure_debut,
                     "lieu": prochaine_rep.lieu
                 }
-            
+
             dernier_chant = Chant.objects.filter(chorale=chorale).order_by('-created_at').first()
             dernier_chant_data = None
             if dernier_chant:
                 dernier_chant_data = {
+                    "id": dernier_chant.id,
                     "titre": dernier_chant.titre,
                     "created_at": dernier_chant.created_at
                 }
+
+            # Statut de cotisation réel : la cotisation la plus récente du
+            # membre, non exonérée. « À jour » seulement si soldée.
+            membre = getattr(request.user, "membre", None)
+            cotisation_status = "Aucune cotisation"
+            if membre is not None:
+                from finances.models import Cotisation
+                derniere = (
+                    Cotisation.objects
+                    .filter(membre=membre, is_deleted=False)
+                    .exclude(statut=Cotisation.StatutCotisation.EXONERE)
+                    .order_by("-created_at")
+                    .first()
+                )
+                if derniere is not None:
+                    cotisation_status = (
+                        "À jour" if derniere.montant_paye >= derniere.montant_du
+                        else "Impayée" if derniere.montant_paye == 0
+                        else "Partielle"
+                    )
 
             return Response({
                 "role": "choriste",
                 "chants_count": chants_count,
                 "prochaine_repetition": rep_data,
-                "cotisation_status": "À jour", # Mock for now
+                "cotisation_status": cotisation_status,
                 "dernier_chant": dernier_chant_data
             })
         
