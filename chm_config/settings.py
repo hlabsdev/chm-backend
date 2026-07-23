@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     "musique.apps.MusiqueConfig",
     "presences.apps.PresencesConfig",
     "finances.apps.FinancesConfig",
+    "communications.apps.CommunicationsConfig",
 ]
 
 # ---------------------------------------------------------------------------
