@@ -83,6 +83,34 @@ def test_confidentialite_liste_permissions(
     assert liste_mdc.data["count"] == 2
 
 
+def test_bureau_redige_le_resume_de_seance(
+    auth_client, membre_factory, mandat_factory, chorale_a, repetition_factory
+):
+    """
+    Résumé/compte-rendu de répétition (décisions, annonces) — généralement
+    rédigé par le secrétaire (bureau). Un simple membre ne peut pas l'éditer.
+    """
+    bureau = membre_factory(chorale_a)
+    mandat_factory(bureau, "bureau")
+    membre = membre_factory(chorale_a)
+    rep = repetition_factory(chorale_a)
+
+    resp = auth_client(bureau).patch(
+        f"/api/presences/repetitions/{rep.pk}/",
+        {"resume": "Décision : concert de Noël le 20 décembre."},
+        format="json",
+    )
+    assert resp.status_code == 200
+    assert resp.data["resume"] == "Décision : concert de Noël le 20 décembre."
+
+    refus = auth_client(membre).patch(
+        f"/api/presences/repetitions/{rep.pk}/",
+        {"resume": "Je modifie sans droit."},
+        format="json",
+    )
+    assert refus.status_code == 403
+
+
 def test_mdc_cree_une_repetition_avec_chorale_injectee(
     auth_client, membre_factory, mandat_factory, chorale_a
 ):
