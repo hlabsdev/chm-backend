@@ -119,7 +119,8 @@ pytest -q                      # suite complète (pytest-django)
 python manage.py check
 ```
 
-Suite : ~78 tests couvrant auth, dashboard, isolation cross-tenant par app
-(finances, membres, musique, présences), RBAC, bulk actions, annonces, rapports
-(agrégation + exports + dégradation PDF). Fixtures partagées dans `conftest.py`
-(`membre_factory`, `mandat_factory`, `chorale_a`/`chorale_b`, `auth_client`).
+Suite : ~86 tests couvrant auth, dashboard, isolation cross-tenant par app
+(finances, membres, musique, présences), RBAC, structure (pupitres/postes/
+organigramme), bulk actions, annonces, rapports (agrégation + exports +
+dégradation PDF). Fixtures partagées dans `conftest.py` (`membre_factory`,
+`mandat_factory`, `chorale_a`/`chorale_b`, `auth_client`).
