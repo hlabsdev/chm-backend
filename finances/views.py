@@ -22,6 +22,7 @@ from .models import (
     Cotisation,
     Mouvement,
     PaiementCotisation,
+    TarifCotisation,
 )
 from .serializers import (
     CampagneCotisationListSerializer,
@@ -30,6 +31,7 @@ from .serializers import (
     EtatCaisseSerializer,
     MouvementSerializer,
     PaiementCotisationSerializer,
+    TarifCotisationSerializer,
 )
 
 
@@ -104,7 +106,9 @@ class CampagneCotisationViewSet(ChoraleFilterMixin, viewsets.ModelViewSet):
                 chorale=campagne.chorale,
                 campagne=campagne,
                 membre=membre,
-                montant_du=campagne.montant_unitaire,
+                # Montant déduit des paliers (tarifs) de la campagne selon le
+                # profil du membre ; ajustable ensuite ligne par ligne.
+                montant_du=campagne.montant_pour(membre),
             )
             cotisations_creees.append(cotisation)
 
@@ -115,6 +119,17 @@ class CampagneCotisationViewSet(ChoraleFilterMixin, viewsets.ModelViewSet):
             },
             status=status.HTTP_201_CREATED,
         )
+
+
+class TarifCotisationViewSet(ChoraleFilterMixin, viewsets.ModelViewSet):
+    """
+    API Tarifs (paliers) de cotisation.
+    Ex. « Tenue femmes : 5000 » / « Tenue hommes : 4500 ».
+    """
+    queryset = TarifCotisation.objects.select_related("critere_pupitre")
+    serializer_class = TarifCotisationSerializer
+    permission_classes = [IsBureauOrTresorier]
+    filterset_fields = ["campagne"]
 
 
 class CotisationViewSet(ChoraleFilterMixin, viewsets.ModelViewSet):
@@ -132,6 +147,14 @@ class CotisationViewSet(ChoraleFilterMixin, viewsets.ModelViewSet):
     serializer_class = CotisationSerializer
     permission_classes = [IsBureauOrTresorier]
     filterset_fields = ["campagne", "membre", "statut"]
+
+    @action(detail=True, methods=["post"])
+    def exonerer(self, request, pk=None):
+        """Exonère un membre de cette cotisation (statut = exonéré)."""
+        cotisation = self.get_object()
+        cotisation.statut = Cotisation.StatutCotisation.EXONERE
+        cotisation.save(update_fields=["statut", "updated_at"])
+        return Response(CotisationSerializer(cotisation).data)
 
 
 class PaiementCotisationViewSet(ChoraleFilterMixin, viewsets.ModelViewSet):

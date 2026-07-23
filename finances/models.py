@@ -192,6 +192,76 @@ class CampagneCotisation(ChoraleOwnedModel):
             return 0
         return round(float(self.montant_total_collecte / attendu) * 100, 1)
 
+    def montant_pour(self, membre):
+        """
+        Montant dû par un membre selon les paliers (tarifs) de la campagne :
+        tarif par sexe > tarif par pupitre > tarif par défaut > montant_unitaire.
+        """
+        tarifs = list(self.tarifs.all())
+        for t in tarifs:
+            if t.critere_sexe and not t.critere_pupitre_id and t.correspond(membre):
+                return t.montant
+        for t in tarifs:
+            if t.critere_pupitre_id and t.correspond(membre):
+                return t.montant
+        for t in tarifs:
+            if t.est_defaut:
+                return t.montant
+        return self.montant_unitaire
+
+
+# ---------------------------------------------------------------------------
+# TarifCotisation — palier de montant au sein d'une campagne
+#
+# Permet des montants différents selon un critère de membre (sexe, pupitre).
+# Ex. « Tenue femmes : 5000 » / « Tenue hommes : 4500 ».
+# Un tarif sans critère sert de tarif PAR DÉFAUT (fallback).
+# Le montant reste éditable individuellement sur chaque Cotisation ensuite.
+# ---------------------------------------------------------------------------
+
+class TarifCotisation(ChoraleOwnedModel):
+    """Palier de cotisation appliqué selon un critère de membre."""
+    campagne = models.ForeignKey(
+        CampagneCotisation,
+        on_delete=models.CASCADE,
+        related_name="tarifs",
+    )
+    nom = models.CharField(max_length=100, verbose_name="Libellé du tarif")
+    montant = models.DecimalField(max_digits=10, decimal_places=2)
+    critere_sexe = models.CharField(
+        max_length=10, blank=True,
+        verbose_name="Critère sexe",
+        help_text="Si renseigné, ce tarif s'applique aux membres de ce sexe.",
+    )
+    critere_pupitre = models.ForeignKey(
+        "membres.Pupitre",
+        null=True, blank=True,
+        on_delete=models.CASCADE,
+        related_name="tarifs_cotisation",
+        verbose_name="Critère pupitre",
+        help_text="Si renseigné, ce tarif s'applique aux membres de ce pupitre.",
+    )
+
+    class Meta:
+        ordering = ["campagne", "nom"]
+        verbose_name = "Tarif de cotisation"
+        verbose_name_plural = "Tarifs de cotisation"
+
+    def __str__(self):
+        return f"{self.nom} — {self.montant}"
+
+    def correspond(self, membre) -> bool:
+        """True si ce tarif s'applique au membre selon ses critères."""
+        if self.critere_sexe and membre.sexe != self.critere_sexe:
+            return False
+        if self.critere_pupitre_id and membre.pupitre_id != self.critere_pupitre_id:
+            return False
+        return True
+
+    @property
+    def est_defaut(self) -> bool:
+        return not self.critere_sexe and not self.critere_pupitre_id
+
 
 # ---------------------------------------------------------------------------
 # Cotisation — attribution d'une campagne à un membre

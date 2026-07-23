@@ -15,6 +15,7 @@ router = DefaultRouter()
 router.register(r"categories", views.CategorieMouvementViewSet, basename="categorie")
 router.register(r"mouvements", views.MouvementViewSet, basename="mouvement")
 router.register(r"campagnes", views.CampagneCotisationViewSet, basename="campagne")
+router.register(r"tarifs", views.TarifCotisationViewSet, basename="tarif")
 router.register(r"cotisations", views.CotisationViewSet, basename="cotisation")
 router.register(r"paiements", views.PaiementCotisationViewSet, basename="paiement")
 

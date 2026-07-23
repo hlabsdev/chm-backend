@@ -12,7 +12,23 @@ from .models import (
     Cotisation,
     Mouvement,
     PaiementCotisation,
+    TarifCotisation,
 )
+
+
+class TarifCotisationSerializer(serializers.ModelSerializer):
+    """Palier de montant d'une campagne (ex. Femmes 5000 / Hommes 4500)."""
+    critere_pupitre_nom = serializers.CharField(
+        source="critere_pupitre.nom", read_only=True, default=None
+    )
+
+    class Meta:
+        model = TarifCotisation
+        fields = [
+            "id", "campagne", "nom", "montant",
+            "critere_sexe", "critere_pupitre", "critere_pupitre_nom",
+        ]
+        read_only_fields = ["id"]
 
 
 class CategorieMouvementSerializer(serializers.ModelSerializer):
@@ -56,6 +72,7 @@ class CampagneCotisationListSerializer(serializers.ModelSerializer):
     )
     taux_recouvrement = serializers.FloatField(read_only=True)
     nombre_cotisations = serializers.SerializerMethodField()
+    tarifs = TarifCotisationSerializer(many=True, read_only=True)
 
     class Meta:
         model = CampagneCotisation
@@ -63,7 +80,7 @@ class CampagneCotisationListSerializer(serializers.ModelSerializer):
             "id", "nom", "type_campagne", "montant_unitaire",
             "date_debut", "date_fin", "is_obligatoire", "is_active",
             "montant_total_attendu", "montant_total_collecte",
-            "taux_recouvrement", "nombre_cotisations",
+            "taux_recouvrement", "nombre_cotisations", "tarifs",
         ]
         read_only_fields = ["id"]
 
