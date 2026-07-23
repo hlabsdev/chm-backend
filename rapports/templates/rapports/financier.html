@@ -1,9 +1,10 @@
 {% extends "rapports/base.html" %}
+{% load rapports_extras %}
 {% block contenu %}
   <div style="margin-bottom: 16px;">
-    <div class="kpi"><div class="val">{{ data.total_entrees }} {{ devise }}</div><div class="lbl">Entrées</div></div>
-    <div class="kpi"><div class="val">{{ data.total_sorties }} {{ devise }}</div><div class="lbl">Sorties</div></div>
-    <div class="kpi"><div class="val">{{ data.solde }} {{ devise }}</div><div class="lbl">Solde</div></div>
+    <div class="kpi"><div class="val">{{ data.total_entrees|montant }} {{ devise }}</div><div class="lbl">Entrées</div></div>
+    <div class="kpi"><div class="val">{{ data.total_sorties|montant }} {{ devise }}</div><div class="lbl">Sorties</div></div>
+    <div class="kpi"><div class="val">{{ data.solde|montant }} {{ devise }}</div><div class="lbl">Solde</div></div>
     <div class="kpi"><div class="val">{{ data.nombre_mouvements }}</div><div class="lbl">Mouvements</div></div>
   </div>
 
@@ -12,9 +13,9 @@
     <table>
       <tr><th>Catégorie</th><th class="num">Montant</th></tr>
       {% for e in data.entrees_par_categorie %}
-        <tr><td>{{ e.categorie }}</td><td class="num">{{ e.total }} {{ devise }}</td></tr>
+        <tr><td>{{ e.categorie }}</td><td class="num">{{ e.total|montant }} {{ devise }}</td></tr>
       {% endfor %}
-      <tr class="total-row"><td>Total entrées</td><td class="num">{{ data.total_entrees }} {{ devise }}</td></tr>
+      <tr class="total-row"><td>Total entrées</td><td class="num">{{ data.total_entrees|montant }} {{ devise }}</td></tr>
     </table>
   {% else %}<p class="vide">Aucune entrée sur la période.</p>{% endif %}
 
@@ -23,9 +24,9 @@
     <table>
       <tr><th>Catégorie</th><th class="num">Montant</th></tr>
       {% for s in data.sorties_par_categorie %}
-        <tr><td>{{ s.categorie }}</td><td class="num">{{ s.total }} {{ devise }}</td></tr>
+        <tr><td>{{ s.categorie }}</td><td class="num">{{ s.total|montant }} {{ devise }}</td></tr>
       {% endfor %}
-      <tr class="total-row"><td>Total sorties</td><td class="num">{{ data.total_sorties }} {{ devise }}</td></tr>
+      <tr class="total-row"><td>Total sorties</td><td class="num">{{ data.total_sorties|montant }} {{ devise }}</td></tr>
     </table>
   {% else %}<p class="vide">Aucune sortie sur la période.</p>{% endif %}
 
@@ -36,8 +37,8 @@
       {% for c in data.campagnes %}
         <tr>
           <td>{{ c.nom }}</td><td>{{ c.type }}</td>
-          <td class="num">{{ c.attendu }}</td><td class="num">{{ c.collecte }}</td>
-          <td class="num">{{ c.restant }}</td><td class="num">{{ c.taux_recouvrement }} %</td>
+          <td class="num">{{ c.attendu|montant }}</td><td class="num">{{ c.collecte|montant }}</td>
+          <td class="num">{{ c.restant|montant }}</td><td class="num">{{ c.taux_recouvrement }} %</td>
         </tr>
       {% endfor %}
     </table>

@@ -12,6 +12,7 @@ on teste donc :
 import pytest
 
 from rapports import exports, services
+from rapports.templatetags.rapports_extras import montant
 
 pytestmark = pytest.mark.django_db
 
@@ -23,13 +24,20 @@ def bureau_a(membre_factory, mandat_factory, chorale_a):
     return m
 
 
+def test_montant_formate_avec_separateur_de_milliers():
+    # 1000 -> "1<insécable>000" ; le test ne dépend pas du caractère exact.
+    formate = montant(1000)
+    assert formate.startswith("1") and formate.endswith("000") and len(formate) == 5
+
+
 def test_rendu_html_financier_contient_les_totaux(chorale_a, bureau_a, mouvement_factory):
     mouvement_factory(chorale_a, enregistre_par=bureau_a)  # entrée 1000
     data = services.rapport_financier(chorale_a)
     html = exports.rendu_html("financier", data, chorale_a)
     assert chorale_a.nom in html
     assert "Rapport financier" in html
-    assert "1000" in html
+    # Montant formaté (séparateur de milliers) présent dans le rendu.
+    assert montant(1000) in html
 
 
 def test_export_csv_presences_via_api(auth_client, bureau_a, membre_factory, chorale_a):

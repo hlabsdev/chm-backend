@@ -13,14 +13,44 @@ Les vues appellent ces fonctions selon le paramètre ?format=.
 
 import csv
 import io
+import os
+import sys
 from datetime import date
 
+from django.conf import settings
 from django.template.loader import render_to_string
 from django.utils import timezone
 
 
 class PdfIndisponible(RuntimeError):
     """WeasyPrint n'a pas pu charger ses dépendances système (GTK/Pango/Cairo)."""
+
+
+# Emplacements Windows usuels des DLL GTK (MSYS2). Sur Windows, les libs de
+# WeasyPrint ne sont pas trouvées via le PATH classique : il faut les déclarer
+# explicitement avec os.add_dll_directory. On tente WEASYPRINT_DLL_DIR (env)
+# puis les chemins MSYS2 par défaut. Sans effet hors Windows.
+_GTK_DLL_DIRS_WINDOWS = [
+    r"C:\msys64\ucrt64\bin",
+    r"C:\msys64\mingw64\bin",
+    r"C:\Program Files\GTK3-Runtime Win64\bin",
+]
+
+
+def _preparer_dll_gtk() -> None:
+    if sys.platform != "win32":
+        return
+    candidats = []
+    depuis_env = os.environ.get("WEASYPRINT_DLL_DIR") or getattr(settings, "WEASYPRINT_DLL_DIR", None)
+    if depuis_env:
+        candidats.append(depuis_env)
+    candidats.extend(_GTK_DLL_DIRS_WINDOWS)
+    for chemin in candidats:
+        if chemin and os.path.isdir(chemin):
+            try:
+                os.add_dll_directory(chemin)
+            except OSError:
+                continue
 
 
 # Métadonnées d'affichage par rapport (titre + template).
@@ -62,6 +92,7 @@ def html_vers_pdf(html: str) -> bytes:
     d'un OSError brut) si les libs système ne sont pas chargeables, pour que
     la vue puisse répondre proprement plutôt que planter en 500.
     """
+    _preparer_dll_gtk()
     try:
         from weasyprint import HTML
     except OSError as exc:  # libs GTK/Pango absentes
