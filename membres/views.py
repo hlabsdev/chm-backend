@@ -7,23 +7,29 @@ Tous les ViewSets utilisent ChoraleFilterMixin pour l'isolation par chorale.
 
 from django.contrib.auth.models import Group
 from django.db.models import Prefetch
-from rest_framework import viewsets, status, permissions
+from rest_framework import generics, viewsets, status, permissions
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
+from authentication.serializers import CustomTokenObtainPairSerializer
 from core.mixins import ChoraleFilterMixin, SoftDeleteMixin
 from core.permissions import IsBureau, IsBureauOrMaitreChoeur, IsMembreActif
+from core.throttles import InvitationRejoindreThrottle, InvitationVerifierThrottle
 
 from .filters import MembreFilter
-from .models import Mandat, Membre, Poste, Pupitre
+from .models import InvitationChorale, Mandat, Membre, Poste, Pupitre, generer_code_invitation
 from .serializers import (
     GroupeSerializer,
+    InvitationSerializer,
     MandatSerializer,
     MembreCreateSerializer,
     MembreDetailSerializer,
     MembreListSerializer,
     PosteSerializer,
     PupitreSerializer,
+    RejoindreInvitationSerializer,
 )
 
 # Groupes RBAC assignables à un poste (les groupes de base membre_actif /
@@ -234,4 +240,87 @@ class MandatViewSet(ChoraleFilterMixin, viewsets.ModelViewSet):
         return Response(
             {"detail": f"Mandat de {mandat.membre.nom_complet} terminé."},
             status=status.HTTP_200_OK,
+        )
+
+
+class InvitationViewSet(ChoraleFilterMixin, viewsets.ModelViewSet):
+    """
+    API Invitations — codes permettant à un choriste de rejoindre la chorale
+    par auto-inscription. Gestion réservée au Bureau (outil interne, pas
+    besoin d'être visible des choristes).
+
+    GET    /api/membres/invitations/          → codes de la chorale
+    POST   /api/membres/invitations/          → génère un nouveau code
+    PATCH  /api/membres/invitations/{id}/     → désactiver, changer expiration…
+    DELETE /api/membres/invitations/{id}/     → supprimer définitivement
+    """
+    queryset = InvitationChorale.objects.select_related("cree_par__user", "pupitre_suggere")
+    serializer_class = InvitationSerializer
+    permission_classes = [IsBureau]
+
+    def perform_create(self, serializer):
+        chorale = getattr(self.request, "chorale", None)
+        membre = getattr(self.request.user, "membre", None)
+        if not chorale:
+            raise PermissionDenied("Vous devez être associé à une chorale pour créer une invitation.")
+
+        code = generer_code_invitation()
+        while InvitationChorale.objects.filter(code=code).exists():
+            code = generer_code_invitation()
+
+        serializer.save(chorale=chorale, cree_par=membre, code=code)
+
+
+class InvitationVerifierView(APIView):
+    """
+    GET /api/membres/invitations/verifier/?code=XXXXXXXX
+    Vérification publique (non authentifiée) d'un code avant inscription.
+    Ne révèle rien d'autre que la validité et le nom de la chorale.
+    """
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = [InvitationVerifierThrottle]
+
+    def get(self, request):
+        code = (request.query_params.get("code") or "").strip().upper()
+        invitation = (
+            InvitationChorale.objects.select_related("chorale", "pupitre_suggere")
+            .filter(code=code)
+            .first()
+        )
+        if not invitation or not invitation.est_valide():
+            return Response({"valide": False})
+        return Response({
+            "valide": True,
+            "chorale_nom": invitation.chorale.nom,
+            "pupitre_suggere": invitation.pupitre_suggere.nom if invitation.pupitre_suggere_id else None,
+        })
+
+
+class InvitationRejoindreView(generics.CreateAPIView):
+    """
+    POST /api/membres/invitations/rejoindre/
+    Auto-inscription publique via un code d'invitation valide. Crée le User
+    + Membre dans la chorale du code, puis connecte immédiatement (JWT),
+    comme le faisait l'ancien flux d'inscription (mais scopé par un code
+    long et aléatoire au lieu d'un chorale_id deviné).
+    """
+    serializer_class = RejoindreInvitationSerializer
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = [InvitationRejoindreThrottle]
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+
+        token_serializer = CustomTokenObtainPairSerializer()
+        token = token_serializer.get_token(user)
+
+        return Response(
+            {
+                "detail": "Inscription réussie.",
+                "access": str(token.access_token),
+                "refresh": str(token),
+            },
+            status=status.HTTP_201_CREATED,
         )

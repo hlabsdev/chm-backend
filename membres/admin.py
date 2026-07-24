@@ -6,7 +6,7 @@ Configuration de l'administration Django pour le module Membres.
 
 from django.contrib import admin
 
-from .models import Mandat, Membre, Poste, Pupitre
+from .models import InvitationChorale, Mandat, Membre, Poste, Pupitre
 
 
 @admin.register(Pupitre)
@@ -53,3 +53,13 @@ class MandatAdmin(admin.ModelAdmin):
         "poste__nom",
     ]
     raw_id_fields = ["membre", "poste"]
+
+
+@admin.register(InvitationChorale)
+class InvitationChoraleAdmin(admin.ModelAdmin):
+    """Vue superuser en lecture — la gestion courante se fait par le Bureau via l'app."""
+    list_display = ["code", "chorale", "cree_par", "is_active", "expire_le", "nombre_utilisations", "max_utilisations", "created_at"]
+    list_filter = ["chorale", "is_active"]
+    search_fields = ["code", "note"]
+    raw_id_fields = ["cree_par", "pupitre_suggere"]
+    readonly_fields = ["code", "nombre_utilisations", "created_at", "updated_at"]

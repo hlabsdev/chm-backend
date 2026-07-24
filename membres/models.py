@@ -13,6 +13,8 @@ Chaque modèle est scopé à une Chorale via les mixins core :
     - Mandat           → TimeStampedModel (chorale déduite via membre)
 """
 
+import secrets
+
 from django.contrib.auth.models import Group, User
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -211,6 +213,14 @@ class Membre(SoftDeleteModel):
         blank=True,
         help_text="Notes internes — visibles Bureau et Admin uniquement.",
     )
+    invitation_utilisee = models.ForeignKey(
+        "InvitationChorale",
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name="membres_inscrits",
+        verbose_name="Invitation utilisée",
+        help_text="Code d'invitation ayant servi à l'inscription, le cas échéant (traçabilité).",
+    )
 
     objects = MembreQuerySet.as_manager()
 
@@ -364,3 +374,72 @@ class Mandat(TimeStampedModel):
         self.is_active = False
         self.date_fin = date_fin or timezone.now().date()
         self.save(update_fields=["is_active", "date_fin"])
+
+
+# ---------------------------------------------------------------------------
+# InvitationChorale — code d'invitation choriste, généré par le Bureau
+#
+# Remplace l'ancienne auto-inscription ouverte (retirée : elle permettait de
+# rejoindre n'importe quelle chorale en devinant un petit entier séquentiel).
+# Ici, l'inscription publique n'est possible qu'avec un code long et aléatoire,
+# généré volontairement par un membre du Bureau — c'est le Bureau qui décide
+# qui peut rejoindre, pas n'importe qui devinant une URL.
+# ---------------------------------------------------------------------------
+
+def generer_code_invitation() -> str:
+    """
+    Code court à partager (oral, SMS, affiche) — alphabet restreint sans
+    caractères ambigus (pas de 0/O, 1/I/L) pour rester facile à recopier.
+    """
+    alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+    return "".join(secrets.choice(alphabet) for _ in range(8))
+
+
+class InvitationChorale(ChoraleOwnedModel):
+    """
+    Code d'invitation permettant de rejoindre une chorale précise par
+    auto-inscription publique, sans passer par une création manuelle du
+    Bureau membre par membre. Peut être à usage unique (max_utilisations=1,
+    « invitation nominative ») ou partagé (ex. affiché lors d'un recrutement).
+    """
+    code = models.CharField(max_length=12, unique=True, db_index=True)
+    cree_par = models.ForeignKey(
+        Membre, null=True, on_delete=models.SET_NULL,
+        related_name="invitations_creees", verbose_name="Créé par",
+    )
+    pupitre_suggere = models.ForeignKey(
+        Pupitre, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="invitations", verbose_name="Pupitre suggéré",
+        help_text="Pré-affecte le pupitre du membre qui rejoint via ce code (optionnel).",
+    )
+    note = models.CharField(
+        max_length=200, blank=True,
+        help_text="Usage interne, ex. « Recrutement pupitre hommes — Pâques 2026 ».",
+    )
+    is_active = models.BooleanField(default=True, verbose_name="Active")
+    expire_le = models.DateField(
+        null=True, blank=True, verbose_name="Expire le",
+        help_text="Vide = pas d'expiration.",
+    )
+    max_utilisations = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="Utilisations maximum",
+        help_text="Vide = illimité. Mettre 1 pour une invitation nominative à usage unique.",
+    )
+    nombre_utilisations = models.PositiveIntegerField(default=0, verbose_name="Utilisations")
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Invitation chorale"
+        verbose_name_plural = "Invitations chorale"
+
+    def __str__(self):
+        return f"{self.code} — {self.chorale.nom}"
+
+    def est_valide(self) -> bool:
+        if not self.is_active:
+            return False
+        if self.expire_le and self.expire_le < timezone.now().date():
+            return False
+        if self.max_utilisations is not None and self.nombre_utilisations >= self.max_utilisations:
+            return False
+        return True
