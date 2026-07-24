@@ -1,13 +1,59 @@
+from rest_framework import generics, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
-from rest_framework import status
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from core.permissions import IsBureauOrMaitreChoeur
+from core.serializers import DemandeChoraleCreateSerializer
+from core.throttles import DemandeChoraleThrottle
 from membres.models import Membre, Pupitre
 from musique.models import Chant
 from presences.models import Repetition, PermissionRequest
 from django.utils import timezone
 from django.db.models import Count
+
+
+def _adresse_ip(request) -> str | None:
+    """IP du client — préfère X-Forwarded-For (proxy/déploiement) à REMOTE_ADDR."""
+    xff = request.META.get("HTTP_X_FORWARDED_FOR")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.META.get("REMOTE_ADDR")
+
+
+class DemandeChoraleCreateView(generics.CreateAPIView):
+    """
+    POST /api/core/demandes-chorale/
+    Formulaire public (non authentifié) de demande d'adhésion d'une nouvelle
+    chorale. Ne crée AUCUNE chorale — seulement une demande `en_attente`,
+    revue ensuite par l'opérateur via l'admin Django (core/admin.py).
+
+    Anti-abus : throttle par IP (cf. DEFAULT_THROTTLE_RATES) + honeypot
+    (`site_web` rempli → succès simulé, rien n'est enregistré) + rejet des
+    doublons en attente (email/nom) géré par le serializer.
+    """
+    serializer_class = DemandeChoraleCreateSerializer
+    permission_classes = [AllowAny]
+    throttle_classes = [DemandeChoraleThrottle]
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        if serializer.validated_data.get("site_web"):
+            # Honeypot déclenché : réponse identique à un succès réel, mais
+            # rien n'est écrit en base — ne pas révéler le piège à un robot.
+            return Response(
+                {"detail": "Demande envoyée. Nous reviendrons vers vous rapidement."},
+                status=status.HTTP_201_CREATED,
+            )
+
+        serializer.validated_data.pop("site_web", None)
+        serializer.save(adresse_ip=_adresse_ip(request))
+        headers = self.get_success_headers(serializer.data)
+        return Response(
+            {"detail": "Demande envoyée. Nous reviendrons vers vous rapidement."},
+            status=status.HTTP_201_CREATED, headers=headers,
+        )
 
 class DashboardStatsView(APIView):
     permission_classes = [IsAuthenticated]

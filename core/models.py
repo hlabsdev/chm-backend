@@ -186,3 +186,67 @@ class SoftDeleteModel(ChoraleOwnedModel):
         self.is_deleted = False
         self.deleted_at = None
         self.save(update_fields=["is_deleted", "deleted_at", "updated_at"])
+
+
+# ---------------------------------------------------------------------------
+# DemandeChorale — Demande publique d'adhésion d'une nouvelle chorale
+# ---------------------------------------------------------------------------
+#
+# Volontairement PAS liée à une Chorale (elle en demande une nouvelle) et pas
+# de provisionnement automatique : une demande reste `en_attente` jusqu'à
+# modération humaine par l'opérateur (superuser, via l'admin Django), qui
+# l'approuve — déclenchant `core.services.provisionner_chorale` — ou la
+# rejette. C'est le rempart anti-abus : personne ne peut créer une chorale
+# (et donc consommer des ressources / squatter un nom) sans revue humaine.
+
+class DemandeChorale(TimeStampedModel):
+    """Demande d'adhésion d'une nouvelle chorale à la plateforme (modérée)."""
+
+    class Statut(models.TextChoices):
+        EN_ATTENTE = "en_attente", "En attente"
+        APPROUVEE = "approuvee", "Approuvée"
+        REJETEE = "rejetee", "Rejetée"
+
+    # --- Renseigné par le demandeur (public, non authentifié) ---
+    nom_chorale = models.CharField(max_length=200, verbose_name="Nom de la chorale souhaité")
+    prefix_souhaite = models.CharField(
+        max_length=5, blank=True,
+        verbose_name="Préfixe souhaité",
+        help_text="Suggestion du demandeur — l'opérateur confirme ou modifie le préfixe final.",
+    )
+    ville_pays = models.CharField(max_length=200, blank=True, verbose_name="Ville / Pays")
+    contact_nom = models.CharField(max_length=200, verbose_name="Nom du contact")
+    contact_email = models.EmailField(verbose_name="Email du contact")
+    contact_telephone = models.CharField(max_length=25, blank=True)
+    message = models.TextField(blank=True, verbose_name="Message / motivation")
+    adresse_ip = models.GenericIPAddressField(
+        null=True, blank=True,
+        verbose_name="Adresse IP",
+        help_text="Capturée pour l'audit anti-abus, jamais exposée publiquement.",
+    )
+
+    # --- Modération (opérateur, via l'admin Django) ---
+    statut = models.CharField(max_length=20, choices=Statut.choices, default=Statut.EN_ATTENTE)
+    prefix_attribue = models.CharField(
+        max_length=5, blank=True,
+        verbose_name="Préfixe attribué",
+        help_text="À renseigner par l'opérateur avant d'approuver — devient le préfixe réel de la chorale.",
+    )
+    devise = models.CharField(
+        max_length=3, choices=Chorale.Monnaie.choices, default=Chorale.Monnaie.XOF,
+        verbose_name="Devise attribuée",
+    )
+    notes_internes = models.TextField(blank=True, verbose_name="Notes internes (non visibles du demandeur)")
+    chorale_creee = models.ForeignKey(
+        Chorale, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="demande_origine", verbose_name="Chorale créée",
+    )
+    date_traitement = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Demande d'adhésion chorale"
+        verbose_name_plural = "Demandes d'adhésion chorale"
+
+    def __str__(self):
+        return f"{self.nom_chorale} — {self.get_statut_display()}"

@@ -153,6 +153,14 @@ REST_FRAMEWORK = {
     ],
     "DATETIME_FORMAT": "%Y-%m-%dT%H:%M:%S%z",
     "DATE_FORMAT": "%Y-%m-%d",
+    # Taux anti-abus des endpoints publics (non authentifiés) — cf. core/throttles.py.
+    # Pas de DEFAULT_THROTTLE_CLASSES global : chaque vue publique déclare
+    # explicitement son throttle_classes/throttle_scope pour rester lisible.
+    "DEFAULT_THROTTLE_RATES": {
+        "demande_chorale": "5/day",
+        "invitation_verifier": "20/hour",
+        "invitation_rejoindre": "10/hour",
+    },
 }
 
 # En mode DEBUG, ajouter le BrowsableAPI pour faciliter le développement
