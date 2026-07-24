@@ -116,6 +116,16 @@ JWT (djangorestframework-simplejwt). Le token embarque `groups`, `is_superuser`,
 `/me/`). Nouveau claim utile au front → l'ajouter dans
 `authentication/serializers.py` **et** dans `DecodedToken` côté frontend.
 
+Access token : **30 minutes** (les rôles décodés côté front se rafraîchissent
+au prochain refresh silencieux après un changement de mandat). La
+**suspension d'une chorale** (`Chorale.is_active=False`, via l'admin) est
+appliquée partout : login refusé, tokens déjà émis privés de toute donnée
+(middleware), invitations invalidées.
+
+Les groupes Django sont recalculés par `membres/signals.py` sur **toute**
+sauvegarde de `Mandat` **ou** de `Membre` (création, changement de statut,
+soft-delete/restore) — ne jamais toucher `user.groups` directement.
+
 ## Rapports & génération PDF (WeasyPrint)
 
 L'app `rapports` agrège les autres apps (aucun modèle propre). 4 rapports :
@@ -144,11 +154,13 @@ pytest -q                      # suite complète (pytest-django)
 python manage.py check
 ```
 
-Suite : ~108 tests couvrant auth, dashboard, isolation cross-tenant par app
+Suite : ~118 tests couvrant auth, dashboard, isolation cross-tenant par app
 (finances, membres, musique, présences), RBAC, structure (pupitres/postes/
 organigramme), bulk actions, annonces, rapports (agrégation + exports +
 dégradation PDF), demande d'adhésion chorale (throttle, honeypot, doublons,
-modération admin) et invitations choriste (génération, vérification,
-inscription, expiration/quota, throttle). Fixtures partagées dans
+modération admin), invitations choriste (génération, vérification,
+inscription, expiration/quota, throttle) et synchronisation RBAC
+(permissions fantômes, restore, suspension de chorale, mots de passe
+faibles, matricules séquentiels). Fixtures partagées dans
 `conftest.py` (`membre_factory`, `mandat_factory`, `chorale_a`/`chorale_b`,
 `auth_client`).
