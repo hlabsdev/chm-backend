@@ -5,11 +5,26 @@ Sérialiseurs DRF pour Pupitre, Poste, Membre, Mandat.
 """
 
 from django.contrib.auth.models import Group, User
+from django.contrib.auth.password_validation import validate_password as valider_mot_de_passe
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
 
 from .models import InvitationChorale, Mandat, Membre, Poste, Pupitre
+
+
+def _valider_mot_de_passe_drf(value: str) -> str:
+    """
+    Applique les validateurs Django (AUTH_PASSWORD_VALIDATORS : longueur,
+    mots de passe trop communs, tout-numérique…) dans un serializer DRF —
+    ils ne s'appliquent pas automatiquement hors des formulaires Django.
+    """
+    try:
+        valider_mot_de_passe(value)
+    except DjangoValidationError as exc:
+        raise serializers.ValidationError(list(exc.messages))
+    return value
 
 
 # ---------------------------------------------------------------------------
@@ -79,13 +94,18 @@ class PosteSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at"]
 
     def get_titulaire_actuel(self, obj) -> dict | None:
-        """Retourne le titulaire actif du poste, si existant."""
-        mandat = (
-            obj.mandats
-            .filter(is_active=True)
-            .select_related("membre__user")
-            .first()
-        )
+        """
+        Retourne le titulaire actif du poste, si existant.
+        Utilise le Prefetch `mandats_actifs_liste` posé par PosteViewSet
+        (évite une requête par poste) ; requête directe en repli si le
+        serializer est utilisé hors de ce contexte.
+        """
+        mandats = getattr(obj, "mandats_actifs_liste", None)
+        if mandats is None:
+            mandats = list(
+                obj.mandats.filter(is_active=True).select_related("membre__user")[:1]
+            )
+        mandat = mandats[0] if mandats else None
         if mandat:
             return {
                 "membre_id": mandat.membre.pk,
@@ -224,6 +244,9 @@ class MembreCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Cette adresse email est déjà utilisée.")
         return value
 
+    def validate_password(self, value):
+        return _valider_mot_de_passe_drf(value)
+
     @transaction.atomic
     def create(self, validated_data):
         # `chorale` est injectée par ChoraleFilterMixin.perform_create.
@@ -349,6 +372,9 @@ class RejoindreInvitationSerializer(serializers.Serializer):
         if value and User.objects.filter(email=value).exists():
             raise serializers.ValidationError("Cette adresse email est déjà utilisée.")
         return value
+
+    def validate_password(self, value):
+        return _valider_mot_de_passe_drf(value)
 
     def validate_code(self, value):
         code = value.strip().upper()

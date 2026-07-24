@@ -40,6 +40,10 @@ class ChoraleMiddleware:
         user = getattr(request, "user", None)
         if user and user.is_authenticated and not user.is_superuser:
             membre = getattr(user, "membre", None)
-            if membre is not None:
+            # Chorale suspendue (is_active=False) → None : les tokens déjà
+            # émis restent techniquement valides, mais ChoraleFilterMixin
+            # renverra alors des querysets vides — la suspension prend effet
+            # immédiatement, sans attendre l'expiration des JWT.
+            if membre is not None and membre.chorale.is_active:
                 return membre.chorale
         return None

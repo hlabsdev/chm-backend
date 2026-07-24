@@ -17,12 +17,14 @@ personne elle-même sans validation.
 
 from django.contrib.auth.models import User
 from rest_framework import serializers
+from rest_framework_simplejwt.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     """
     Enrichit le payload JWT avec les données Membre et Chorale.
+    Refuse la connexion si la chorale du membre est suspendue (is_active=False).
 
     Payload résultant :
     {
@@ -36,6 +38,16 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         "email": "jean@example.com"
     }
     """
+
+    def validate(self, attrs):
+        data = super().validate(attrs)
+        membre = getattr(self.user, "membre", None)
+        if membre is not None and not membre.chorale.is_active:
+            raise AuthenticationFailed(
+                "L'espace de votre chorale est actuellement suspendu. "
+                "Contactez l'administrateur de la plateforme."
+            )
+        return data
 
     @classmethod
     def get_token(cls, user):

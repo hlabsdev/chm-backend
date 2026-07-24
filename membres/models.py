@@ -247,10 +247,20 @@ class Membre(SoftDeleteModel):
     def soft_delete(self) -> None:
         """
         Désactive le compte sans effacer l'historique.
+        - Clôture tous les mandats actifs
         - Passe le statut à INACTIF
         - Désactive le User Django
-        - Clôture tous les mandats actifs (le signal retirera les groupes)
+
+        Les mandats sont clôturés AVANT la sauvegarde du membre : `.update()`
+        ne déclenche aucun signal, c'est le post_save du membre (juste après)
+        qui recalcule les groupes — il doit voir l'état final (mandats clos),
+        sinon les permissions bureau/trésorier survivraient au soft-delete.
         """
+        self.mandats.filter(is_active=True).update(
+            is_active=False,
+            date_fin=timezone.now().date(),
+        )
+
         self.is_deleted = True
         self.deleted_at = timezone.now()
         self.statut = self.Statut.INACTIF
@@ -258,12 +268,6 @@ class Membre(SoftDeleteModel):
 
         self.user.is_active = False
         self.user.save(update_fields=["is_active"])
-
-        # Clôturer tous les mandats actifs (le signal post_save retirera les groupes)
-        self.mandats.filter(is_active=True).update(
-            is_active=False,
-            date_fin=timezone.now().date(),
-        )
 
     def mandats_actifs(self):
         """Retourne les mandats actuellement en cours pour ce membre."""
@@ -277,20 +281,28 @@ class Membre(SoftDeleteModel):
         Génère le prochain numéro de membre pour une chorale donnée.
         Format : {PREFIX}-{XXXX}  ex: LVO-0042
 
-        Le préfixe est tiré de chorale.prefix.
+        Séquence PAR CHORALE : on reprend le plus grand suffixe numérique
+        déjà attribué dans la chorale et on incrémente. (L'ancienne version
+        repartait du PK global → matricules à trous : le 2e membre d'une
+        chorale pouvait être CHA-0017.) Le max lexicographique est correct
+        car le suffixe est zéro-paddé à largeur fixe.
 
         NOTE : cette implémentation n'est pas thread-safe.
         En production avec trafic concurrent, utiliser une séquence
         PostgreSQL via django-sequences ou select_for_update().
         """
-        last = (
+        dernier = (
             cls.objects
-            .filter(chorale=chorale)
-            .order_by("-id")
-            .values("id")
+            .filter(chorale=chorale, numero_membre__startswith=f"{chorale.prefix}-")
+            .order_by("-numero_membre")
+            .values_list("numero_membre", flat=True)
             .first()
         )
-        seq = (last["id"] + 1) if last else 1
+        seq = 1
+        if dernier:
+            suffixe = dernier.rsplit("-", 1)[-1]
+            if suffixe.isdigit():
+                seq = int(suffixe) + 1
         return f"{chorale.prefix}-{seq:04d}"
 
 
@@ -437,6 +449,9 @@ class InvitationChorale(ChoraleOwnedModel):
 
     def est_valide(self) -> bool:
         if not self.is_active:
+            return False
+        if not self.chorale.is_active:
+            # Chorale suspendue → aucune inscription possible via ses codes.
             return False
         if self.expire_le and self.expire_le < timezone.now().date():
             return False

@@ -84,6 +84,13 @@ class SoftDeleteMixin:
         """Exclut les éléments soft-deleted par défaut."""
         qs = super().get_queryset()
 
+        # L'action `restore` cible par définition un élément soft-deleted :
+        # sans cette exception, le filtre ci-dessous rendait la restauration
+        # inatteignable (404) pour un non-superuser — l'isolation par chorale
+        # (ChoraleFilterMixin) reste appliquée en amont.
+        if getattr(self, "action", None) == "restore":
+            return qs
+
         # Permettre de voir les supprimés via ?include_deleted=true
         if self.request.query_params.get("include_deleted") == "true":
             if self.request.user.is_superuser:
