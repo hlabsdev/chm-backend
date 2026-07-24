@@ -23,7 +23,7 @@ SECRET_KEY = os.environ.get(
 
 DEBUG = os.environ.get("DJANGO_DEBUG", "True").lower() in ("true", "1", "yes")
 
-ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "*").split(",")
 
 # ---------------------------------------------------------------------------
 # Applications
@@ -176,9 +176,9 @@ SIMPLE_JWT = {
 # ---------------------------------------------------------------------------
 # CORS — Autorise le frontend Angular en développement
 # ---------------------------------------------------------------------------
-CORS_ALLOWED_ORIGINS = os.environ.get(
-    "CORS_ALLOWED_ORIGINS",
-    "http://localhost:4200,http://127.0.0.1:4200"
-).split(",")
-
+# CORS_ALLOWED_ORIGINS = os.environ.get(
+#     "CORS_ALLOWED_ORIGINS",
+#     "http://localhost:4200,http://127.0.0.1:4200,"
+# ).split(",")
+CORS_ALLOW_ALL_ORIGINS = os.environ.get("CORS_ALLOW_ALL_ORIGINS", "True").lower() in ("true", "1", "yes")
 CORS_ALLOW_CREDENTIALS = True
