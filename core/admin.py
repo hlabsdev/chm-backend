@@ -98,6 +98,21 @@ class DemandeChoraleAdmin(admin.ModelAdmin):
             demande.date_traitement = timezone.now()
             demande.save(update_fields=["statut", "chorale_creee", "date_traitement", "updated_at"])
 
+            # Email au contact (pas encore de compte → pas d'in-app). Jamais
+            # le mot de passe par email : l'opérateur le transmet par un canal
+            # direct (téléphone, message) — le mail ne contient que l'identifiant.
+            from notifications.services import envoyer_email_externe
+            envoyer_email_externe(
+                demande.contact_email,
+                f"Votre chorale « {chorale.nom} » est prête",
+                f"Bonjour {demande.contact_nom},\n\n"
+                f"Votre demande d'adhésion à ChoirManager a été approuvée : "
+                f"l'espace de « {chorale.nom} » est créé.\n\n"
+                f"Votre identifiant de connexion : {admin_user.username}\n"
+                f"Votre mot de passe vous sera transmis séparément par notre équipe.\n\n"
+                f"À très vite,\nL'équipe ChoirManager",
+            )
+
             traitees += 1
             self.message_user(
                 request,
@@ -113,9 +128,22 @@ class DemandeChoraleAdmin(admin.ModelAdmin):
 
     @admin.action(description="Rejeter la/les demande(s) sélectionnée(s)")
     def rejeter(self, request, queryset):
+        from notifications.services import envoyer_email_externe
+
+        en_attente = list(queryset.filter(statut=DemandeChorale.Statut.EN_ATTENTE))
         nb = queryset.filter(statut=DemandeChorale.Statut.EN_ATTENTE).update(
             statut=DemandeChorale.Statut.REJETEE, date_traitement=timezone.now(),
         )
+        for demande in en_attente:
+            envoyer_email_externe(
+                demande.contact_email,
+                "Votre demande d'adhésion à ChoirManager",
+                f"Bonjour {demande.contact_nom},\n\n"
+                f"Après examen, nous ne pouvons pas donner suite à la demande "
+                f"d'adhésion de « {demande.nom_chorale} » pour le moment.\n"
+                f"Vous pouvez nous recontacter pour plus d'informations.\n\n"
+                f"L'équipe ChoirManager",
+            )
         self.message_user(request, f"{nb} demande(s) rejetée(s).", level=messages.SUCCESS)
 
 

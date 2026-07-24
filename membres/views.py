@@ -223,6 +223,21 @@ class MandatViewSet(ChoraleFilterMixin, viewsets.ModelViewSet):
 
         return qs.none()
 
+    def perform_create(self, serializer):
+        mandat = serializer.save()
+        # Prévenir l'intéressé : un poste vient de lui être attribué.
+        from notifications.models import Notification
+        from notifications.services import notifier
+        notifier(
+            mandat.membre,
+            type_notification=Notification.Type.MANDAT,
+            titre=f"Poste attribué : {mandat.poste.nom}",
+            message=f"Le poste « {mandat.poste.nom} » vous a été attribué "
+                    f"à compter du {mandat.date_debut:%d/%m/%Y}.",
+            lien="/structure",
+            par_email=True,
+        )
+
     @action(detail=True, methods=["post"])
     def terminer(self, request, pk=None):
         """
@@ -238,6 +253,17 @@ class MandatViewSet(ChoraleFilterMixin, viewsets.ModelViewSet):
 
         date_fin = request.data.get("date_fin")
         mandat.terminer(date_fin=date_fin)
+
+        from notifications.models import Notification
+        from notifications.services import notifier
+        notifier(
+            mandat.membre,
+            type_notification=Notification.Type.MANDAT,
+            titre=f"Mandat terminé : {mandat.poste.nom}",
+            message=f"Votre mandat « {mandat.poste.nom} » a pris fin le {mandat.date_fin:%d/%m/%Y}.",
+            lien="/structure",
+            par_email=True,
+        )
 
         return Response(
             {"detail": f"Mandat de {mandat.membre.nom_complet} terminé."},

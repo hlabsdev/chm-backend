@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     "finances.apps.FinancesConfig",
     "communications.apps.CommunicationsConfig",
     "rapports.apps.RapportsConfig",
+    "notifications.apps.NotificationsConfig",
 ]
 
 # ---------------------------------------------------------------------------
@@ -184,6 +185,22 @@ SIMPLE_JWT = {
     "AUTH_HEADER_TYPES": ("Bearer",),
     "TOKEN_OBTAIN_SERIALIZER": "authentication.serializers.CustomTokenObtainPairSerializer",
 }
+
+# ---------------------------------------------------------------------------
+# Email — notifications (best-effort, cf. notifications/services.py)
+# ---------------------------------------------------------------------------
+# Dev : backend console (les mails s'affichent dans le terminal du runserver).
+# Prod : définir EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+# et les EMAIL_HOST* ci-dessous via variables d'environnement.
+EMAIL_BACKEND = os.environ.get(
+    "EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend"
+)
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "")
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "True").lower() in ("true", "1", "yes")
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "ChoirManager <no-reply@choirmanager.local>")
 
 # ---------------------------------------------------------------------------
 # CORS — Autorise le frontend Angular en développement

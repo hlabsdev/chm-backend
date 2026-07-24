@@ -18,4 +18,5 @@ urlpatterns = [
 
     # Profil
     path("profile/", views.ProfileView.as_view(), name="profile"),
+    path("changer-mot-de-passe/", views.ChangerMotDePasseView.as_view(), name="changer-mot-de-passe"),
 ]

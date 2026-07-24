@@ -212,6 +212,7 @@ class PermissionRequestViewSet(ChoraleFilterMixin, viewsets.ModelViewSet):
         demande.traitee_par = request.user.membre
         demande.date_traitement = timezone.now()
         demande.save()
+        self._notifier_traitement(demande)
 
         return Response({"detail": "Demande approuvée."})
 
@@ -229,8 +230,30 @@ class PermissionRequestViewSet(ChoraleFilterMixin, viewsets.ModelViewSet):
         demande.traitee_par = request.user.membre
         demande.date_traitement = timezone.now()
         demande.save()
+        self._notifier_traitement(demande)
 
         return Response({"detail": "Demande refusée."})
+
+    @staticmethod
+    def _notifier_traitement(demande):
+        """Prévient le demandeur (in-app + email) que sa demande est traitée."""
+        from notifications.services import notifier
+        from notifications.models import Notification
+
+        approuvee = demande.statut == PermissionRequest.StatutDemande.APPROUVEE
+        periode = f"du {demande.date_debut:%d/%m/%Y} au {demande.date_fin:%d/%m/%Y}" \
+            if demande.date_fin and demande.date_fin != demande.date_debut \
+            else f"du {demande.date_debut:%d/%m/%Y}"
+        notifier(
+            demande.membre,
+            type_notification=Notification.Type.PERMISSION,
+            titre=f"Demande d'absence {'approuvée' if approuvee else 'refusée'}",
+            message=f"Votre demande d'absence {periode} a été "
+                    f"{'approuvée' if approuvee else 'refusée'}"
+                    + (f" par {demande.traitee_par.nom_complet}." if demande.traitee_par else "."),
+            lien="/presences/permissions",
+            par_email=True,
+        )
 
     def _bulk_traiter(self, request, nouveau_statut):
         """
@@ -253,6 +276,8 @@ class PermissionRequestViewSet(ChoraleFilterMixin, viewsets.ModelViewSet):
             d.traitee_par = request.user.membre
             d.date_traitement = now
         PermissionRequest.objects.bulk_update(demandes, ["statut", "traitee_par", "date_traitement"])
+        for d in demandes:
+            self._notifier_traitement(d)
 
         return Response({"detail": f"{len(demandes)} demande(s) traitée(s).", "count": len(demandes)})
 

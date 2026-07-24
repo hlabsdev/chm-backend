@@ -81,6 +81,36 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         return token
 
 
+class ChangerMotDePasseSerializer(serializers.Serializer):
+    """
+    Changement de mot de passe par l'utilisateur connecté.
+    Exige l'ancien mot de passe (pas de reset ici — un membre qui a perdu
+    son mot de passe passe par le Bureau, qui peut lui en refixer un).
+    """
+    ancien = serializers.CharField(write_only=True)
+    nouveau = serializers.CharField(write_only=True)
+
+    def validate_ancien(self, value):
+        if not self.context["request"].user.check_password(value):
+            raise serializers.ValidationError("L'ancien mot de passe est incorrect.")
+        return value
+
+    def validate_nouveau(self, value):
+        from django.contrib.auth.password_validation import validate_password
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        try:
+            validate_password(value, user=self.context["request"].user)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(list(exc.messages))
+        return value
+
+    def save(self, **kwargs):
+        user = self.context["request"].user
+        user.set_password(self.validated_data["nouveau"])
+        user.save(update_fields=["password"])
+        return user
+
+
 class UserProfileSerializer(serializers.ModelSerializer):
     """Sérialiseur pour la lecture/modification du profil connecté."""
     membre_id = serializers.IntegerField(source="membre.pk", read_only=True)

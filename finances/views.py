@@ -114,6 +114,17 @@ class CampagneCotisationViewSet(ChoraleFilterMixin, viewsets.ModelViewSet):
             )
             cotisations_creees.append(cotisation)
 
+        # Chaque membre concerné est prévenu (in-app) que sa cotisation existe.
+        from notifications.models import Notification
+        from notifications.services import notifier_groupe
+        notifier_groupe(
+            [c.membre for c in cotisations_creees],
+            type_notification=Notification.Type.COTISATION,
+            titre=f"Cotisation : {campagne.nom}",
+            message="Votre cotisation a été générée — retrouvez le montant et votre solde dans Mon espace.",
+            lien="/mon-espace",
+        )
+
         return Response(
             {
                 "detail": f"{len(cotisations_creees)} cotisations générées pour la campagne « {campagne.nom} ».",

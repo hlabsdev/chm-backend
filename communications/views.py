@@ -56,4 +56,21 @@ class AnnonceViewSet(SoftDeleteMixin, ChoraleFilterMixin, viewsets.ModelViewSet)
         chorale = getattr(self.request, "chorale", None)
         if not chorale and not self.request.user.is_superuser:
             raise PermissionDenied("Vous devez être associé à une chorale pour publier une annonce.")
-        serializer.save(chorale=chorale, auteur=membre)
+        annonce = serializer.save(chorale=chorale, auteur=membre)
+
+        # Notifier tous les membres actifs (in-app uniquement — pas d'email
+        # de masse), sauf l'auteur qui sait déjà ce qu'il vient de publier.
+        from membres.models import Membre
+        from notifications.models import Notification
+        from notifications.services import notifier_groupe
+        destinataires = Membre.objects.filter(
+            chorale=annonce.chorale, is_deleted=False,
+            statut__in=[Membre.Statut.ACTIF, Membre.Statut.STAGIAIRE],
+        ).exclude(pk=membre.pk)
+        notifier_groupe(
+            destinataires,
+            type_notification=Notification.Type.ANNONCE,
+            titre=f"Nouvelle annonce : {annonce.titre}",
+            message=annonce.contenu[:200],
+            lien="/annonces",
+        )

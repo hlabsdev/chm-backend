@@ -22,6 +22,7 @@ urlpatterns = [
     path("api/finances/", include("finances.urls")),
     path("api/communications/", include("communications.urls")),
     path("api/rapports/", include("rapports.urls")),
+    path("api/notifications/", include("notifications.urls")),
 ]
 
 # Servir les fichiers media en développement
