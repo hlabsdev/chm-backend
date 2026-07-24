@@ -22,8 +22,9 @@ python manage.py runserver          # http://localhost:8000
 ```
 
 Variables d'environnement (valeurs de dev par défaut, cf. `chm_config/settings.py`) :
-`DJANGO_SECRET_KEY`, `DJANGO_DEBUG`, `DJANGO_ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS`,
-et `WEASYPRINT_DLL_DIR` (voir Rapports/PDF ci-dessous).
+`DJANGO_SECRET_KEY`, `DJANGO_DEBUG`, `DJANGO_ALLOWED_HOSTS`, `CORS_ALLOW_ALL_ORIGINS`,
+`WEASYPRINT_DLL_DIR` (voir Rapports/PDF), et `EMAIL_BACKEND` + `EMAIL_HOST*` +
+`DEFAULT_FROM_EMAIL` (notifications par email en prod ; console en dev).
 
 ## Onboarding
 
@@ -105,9 +106,27 @@ permission = créer/activer un `Mandat`, pas éditer `user.groups`.
 ### Apps
 
 `core`, `authentication`, `membres`, `musique`, `presences`, `finances`,
-`communications` (annonces), `rapports` (agrégation + exports). Chaque app expose
-ses routes sous `/api/<app>/` (cf. `chm_config/urls.py`). La logique métier vit
-dans `services.py` / `signals.py`, pas dans les vues ou serializers.
+`communications` (annonces), `rapports` (agrégation + exports), `notifications`
+(in-app + email). Chaque app expose ses routes sous `/api/<app>/` (cf.
+`chm_config/urls.py`). La logique métier vit dans `services.py` / `signals.py`,
+pas dans les vues ou serializers.
+
+### Notifications (in-app + email)
+
+`notifications/services.py` est le **point d'entrée unique** — les vues appellent
+`notifier()` / `notifier_groupe()` / `envoyer_email_externe()`, jamais
+`Notification.objects.create` directement. Les emails sont **best-effort**
+(`fail_silently=True`) : une notification ne doit jamais faire échouer l'action
+métier qui la déclenche. Cas câblés : absence approuvée/refusée (in-app + email),
+poste attribué/mandat clos (in-app + email), annonce publiée (in-app à tous les
+actifs, pas d'email de masse), cotisations générées (in-app), demande d'adhésion
+chorale traitée (email au contact, pas encore de compte). L'API
+`/api/notifications/` est filtrée **par destinataire** (jamais par simple
+appartenance chorale). Email : backend console en dev ; `EMAIL_BACKEND` + `EMAIL_*`
+par variables d'environnement en prod.
+
+Changement de mot de passe : `POST /api/auth/changer-mot-de-passe/`
+`{ancien, nouveau}` (ancien requis, validateurs Django appliqués).
 
 ### Auth
 
@@ -154,13 +173,15 @@ pytest -q                      # suite complète (pytest-django)
 python manage.py check
 ```
 
-Suite : ~118 tests couvrant auth, dashboard, isolation cross-tenant par app
+Suite : ~129 tests couvrant auth, dashboard, isolation cross-tenant par app
 (finances, membres, musique, présences), RBAC, structure (pupitres/postes/
 organigramme), bulk actions, annonces, rapports (agrégation + exports +
 dégradation PDF), demande d'adhésion chorale (throttle, honeypot, doublons,
 modération admin), invitations choriste (génération, vérification,
 inscription, expiration/quota, throttle) et synchronisation RBAC
 (permissions fantômes, restore, suspension de chorale, mots de passe
-faibles, matricules séquentiels). Fixtures partagées dans
+faibles, matricules séquentiels), notifications (déclenchement par cas
+métier, in-app + email, isolation par destinataire) et changement de mot
+de passe. Fixtures partagées dans
 `conftest.py` (`membre_factory`, `mandat_factory`, `chorale_a`/`chorale_b`,
 `auth_client`).
