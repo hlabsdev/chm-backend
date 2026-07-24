@@ -132,6 +132,8 @@ def test_mdc_cree_une_repetition_avec_chorale_injectee(
     assert resp.status_code == 201
     rep = Repetition.objects.get(pk=resp.data["id"])
     assert rep.chorale_id == chorale_a.id
+    # Le créateur (MDC) est désigné dirigeant par défaut.
+    assert rep.dirigee_par_id == mdc.id
 
 
 def test_membre_sans_mandat_refuse_en_ecriture(

@@ -15,6 +15,26 @@ pytestmark = pytest.mark.django_db
 URL = "/api/communications/annonces/"
 
 
+def test_bureau_joint_un_fichier_a_une_annonce(
+    auth_client, membre_factory, mandat_factory, chorale_a, settings, tmp_path
+):
+    """La pièce jointe (la « lettre reçue ») doit pouvoir être uploadée."""
+    settings.MEDIA_ROOT = str(tmp_path)
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    bureau = membre_factory(chorale_a)
+    mandat_factory(bureau, "bureau")
+    fichier = SimpleUploadedFile("invitation.pdf", b"%PDF-1.4 lettre", content_type="application/pdf")
+
+    resp = auth_client(bureau).post(
+        URL,
+        {"titre": "Invitation concert", "contenu": "Voir pièce jointe.", "piece_jointe": fichier},
+        format="multipart",
+    )
+    assert resp.status_code == 201, resp.data
+    assert resp.data["piece_jointe"]  # URL du fichier stocké
+
+
 def test_bureau_publie_une_annonce_et_membre_la_lit(
     auth_client, membre_factory, mandat_factory, chorale_a
 ):

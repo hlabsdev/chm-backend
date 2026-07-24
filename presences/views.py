@@ -46,6 +46,20 @@ class RepetitionViewSet(ChoraleFilterMixin, viewsets.ModelViewSet):
             return [permissions.IsAuthenticated()]
         return [IsBureauOrMaitreChoeur()]
 
+    def perform_create(self, serializer):
+        """
+        Injecte la chorale (via le mixin) et, par défaut, désigne le
+        créateur (généralement le maître de chœur) comme dirigeant de la
+        séance — sauf s'il a explicitement fourni un autre `dirigee_par`.
+        """
+        chorale = getattr(self.request, "chorale", None)
+        extra = {"chorale": chorale} if chorale else {}
+        if not serializer.validated_data.get("dirigee_par"):
+            membre = getattr(self.request.user, "membre", None)
+            if membre is not None:
+                extra["dirigee_par"] = membre
+        serializer.save(**extra)
+
     @action(detail=True, methods=["post"], permission_classes=[IsBureauOrMaitreChoeur])
     def pointer(self, request, pk=None):
         """
