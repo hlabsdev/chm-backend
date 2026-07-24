@@ -26,8 +26,11 @@ build/
 *.egg
 
 # ─── Django — fichiers locaux ────────────────────────────────────────────────
-# db.sqlite3
-# db.sqlite3-journal
+# La base SQLite ne doit JAMAIS entrer dans l'image : c'est une donnée de poste
+# de développement, et le jalon PostgreSQL exige une image sans donnée SQLite
+# (critère d'acceptation §13). Ces deux lignes étaient commentées.
+db.sqlite3
+db.sqlite3-journal
 media/
 staticfiles/
 static_collected/

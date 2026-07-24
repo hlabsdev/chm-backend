@@ -12,6 +12,7 @@ import random
 
 import pytest
 from django.contrib.auth.models import Group, User
+from django.db import transaction
 from rest_framework.test import APIClient
 
 from core.models import Chorale
@@ -66,23 +67,33 @@ def membre_factory(db):
     """
     compteur = {"n": 0}
 
-    def _make(chorale, statut=Membre.Statut.ACTIF, password="testpass123"):
+    def _make(chorale, statut=Membre.Statut.ACTIF, password="testpass123", sexe=None):
         compteur["n"] += 1
         username = f"user{compteur['n']}_{chorale.prefix.lower()}"
-        user = User.objects.create_user(
-            username=username,
-            password=password,
-            email=f"{username}@example.com",
-            first_name="Prenom",
-            last_name=f"Nom{compteur['n']}",
-        )
-        membre = Membre.objects.create(
-            user=user,
-            chorale=chorale,
-            numero_membre=Membre.generer_numero(chorale),
-            date_adhesion="2021-01-01",
-            statut=statut,
-        )
+        # `generer_numero` verrouille la ligne Chorale et exige donc un bloc
+        # atomique englobant la création du membre (cf. Membre.generer_numero).
+        with transaction.atomic():
+            user = User.objects.create_user(
+                username=username,
+                password=password,
+                email=f"{username}@example.com",
+                first_name="Prenom",
+                last_name=f"Nom{compteur['n']}",
+            )
+            membre = Membre.objects.create(
+                user=user,
+                chorale=chorale,
+                numero_membre=Membre.generer_numero(chorale),
+                date_adhesion="2021-01-01",
+                statut=statut,
+                # Alterné plutôt que vide : le sexe conditionne les tarifs de
+                # cotisation par genre, un jeu de test tout-vide ne les
+                # exercerait jamais. Surchargeable par test.
+                sexe=sexe if sexe is not None else (
+                    Membre.Sexe.FEMME if compteur["n"] % 2 else Membre.Sexe.HOMME
+                ),
+                telephone=f"+228 90 00 {compteur['n']:02d} {compteur['n']:02d}",
+            )
         membre._password = password  # pratique pour le login dans les tests
         return membre
 

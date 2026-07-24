@@ -9,7 +9,34 @@ from membres.models import Membre, Pupitre
 from musique.models import Chant
 from presences.models import Repetition, PermissionRequest
 from django.utils import timezone
+from django.db import connection
 from django.db.models import Count
+
+
+class HealthView(APIView):
+    """
+    GET /api/core/health/
+    Sonde de disponibilité utilisée par le healthcheck Compose. Publique et
+    volontairement muette sur l'infrastructure : ni version, ni hôte, ni nom de
+    base — seulement de quoi décider si le conteneur est sain.
+
+    Vérifie aussi la base : un backend qui répond alors que PostgreSQL est
+    injoignable n'est pas « sain » du point de vue de l'orchestrateur.
+    """
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get(self, request):
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT 1")
+                cursor.fetchone()
+        except Exception:
+            return Response(
+                {"status": "degraded", "database": "unavailable"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        return Response({"status": "ok", "database": "ok"})
 
 
 def _adresse_ip(request) -> str | None:

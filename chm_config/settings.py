@@ -1,12 +1,20 @@
 """
 ChoirManager — Configuration Django
 ====================================
-Settings principal du projet. MVP avec SQLite.
+Settings principal du projet. PostgreSQL via `DATABASE_URL` ; repli SQLite
+explicite réservé au poste de développement.
+
+Les réglages sensibles (clé secrète, hôtes autorisés, CORS, base de données)
+sont résolus par `chm_config/env.py` : le défaut y est **fermé** dès que
+`DJANGO_DEBUG=False`, de sorte qu'aucune configuration permissive ne puisse
+résulter du simple oubli d'une variable d'environnement.
 """
 
 import os
 from datetime import timedelta
 from pathlib import Path
+
+from chm_config import env as chm_env
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -14,16 +22,13 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # ---------------------------------------------------------------------------
-# Security
+# Security — cf. chm_config/env.py pour les règles de fermeture par défaut
 # ---------------------------------------------------------------------------
-SECRET_KEY = os.environ.get(
-    "DJANGO_SECRET_KEY",
-    "dev-insecure-key-change-in-production-!@#$%^&*()"
-)
+DEBUG = chm_env.resoudre_debug(os.environ)
 
-DEBUG = os.environ.get("DJANGO_DEBUG", "True").lower() in ("true", "1", "yes")
+SECRET_KEY = chm_env.resoudre_secret_key(os.environ, DEBUG)
 
-ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "*").split(",")
+ALLOWED_HOSTS = chm_env.resoudre_allowed_hosts(os.environ, DEBUG)
 
 # ---------------------------------------------------------------------------
 # Applications
@@ -60,6 +65,9 @@ INSTALLED_APPS = [
 # ---------------------------------------------------------------------------
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # Sert les statiques de l'admin Django depuis le conteneur, sans dépendre
+    # d'un serveur de fichiers externe (le front a son propre Nginx).
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -91,13 +99,14 @@ TEMPLATES = [
 WSGI_APPLICATION = "chm_config.wsgi.application"
 
 # ---------------------------------------------------------------------------
-# Database — SQLite pour le MVP
+# Database — PostgreSQL via DATABASE_URL
 # ---------------------------------------------------------------------------
+# `DATABASE_URL` fait autorité (Compose et CI la fournissent toujours). Le repli
+# SQLite subsiste pour le poste de développement mais reste explicite : il exige
+# DJANGO_DEBUG=True. Dans un conteneur, une DATABASE_URL absente est une erreur
+# de démarrage — jamais un repli silencieux sur db.sqlite3.
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
-    }
+    "default": chm_env.resoudre_database(os.environ, DEBUG, BASE_DIR),
 }
 
 # ---------------------------------------------------------------------------
@@ -126,6 +135,20 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
+
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    # WhiteNoise compresse et empreinte les statiques collectés. Variante non
+    # « manifest » en DEBUG : le manifeste exige un collectstatic préalable,
+    # ce qui casserait `runserver` sur un poste fraîchement cloné.
+    "staticfiles": {
+        "BACKEND": (
+            "whitenoise.storage.CompressedManifestStaticFilesStorage"
+            if not DEBUG
+            else "django.contrib.staticfiles.storage.StaticFilesStorage"
+        ),
+    },
+}
 
 # ---------------------------------------------------------------------------
 # Default primary key field type
@@ -203,11 +226,37 @@ EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "True").lower() in ("true", "1",
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "ChoirManager <no-reply@choirmanager.local>")
 
 # ---------------------------------------------------------------------------
-# CORS — Autorise le frontend Angular en développement
+# CORS
 # ---------------------------------------------------------------------------
-# CORS_ALLOWED_ORIGINS = os.environ.get(
-#     "CORS_ALLOWED_ORIGINS",
-#     "http://localhost:4200,http://127.0.0.1:4200,"
-# ).split(",")
-CORS_ALLOW_ALL_ORIGINS = os.environ.get("CORS_ALLOW_ALL_ORIGINS", "True").lower() in ("true", "1", "yes")
-CORS_ALLOW_CREDENTIALS = True
+# En développement : ouvert, pour que `ng serve` (4200) atteigne l'API (8000).
+# Hors développement : fermé par défaut — l'ouverture passe obligatoirement par
+# CORS_ALLOWED_ORIGINS. La cible de production est same-origin (Nginx sert le
+# front et relaie /api/ vers le backend), donc sans CORS du tout.
+_cors = chm_env.resoudre_cors(os.environ, DEBUG)
+CORS_ALLOW_ALL_ORIGINS = _cors["allow_all_origins"]
+CORS_ALLOWED_ORIGINS = _cors["allowed_origins"]
+CORS_ALLOW_CREDENTIALS = _cors["allow_credentials"]
+
+# ---------------------------------------------------------------------------
+# Réglages de sécurité appliqués hors développement
+# ---------------------------------------------------------------------------
+# Actifs seulement quand DJANGO_DEBUG=False, pour ne pas casser le HTTP local.
+# `DJANGO_SECURE_SSL_REDIRECT` reste débrayable : derrière un reverse-proxy qui
+# termine déjà TLS, la redirection appartient au proxy, pas à Django.
+if not DEBUG:
+    SECURE_SSL_REDIRECT = chm_env.env_bool(os.environ, "DJANGO_SECURE_SSL_REDIRECT", True)
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    # Cookies `Secure` par défaut (posture fermée). Un navigateur ne renvoie
+    # JAMAIS un cookie `Secure` sur une connexion HTTP : sur une pile locale
+    # servie en clair, laisser True rend la connexion à l'admin Django
+    # impossible (le cookie CSRF n'est jamais retourné → 403). D'où ce
+    # débrayage explicite, réservé aux environnements sans TLS.
+    _cookies_secure = chm_env.env_bool(os.environ, "DJANGO_COOKIE_SECURE", True)
+    SESSION_COOKIE_SECURE = _cookies_secure
+    CSRF_COOKIE_SECURE = _cookies_secure
+    SECURE_HSTS_SECONDS = int(os.environ.get("DJANGO_SECURE_HSTS_SECONDS", "31536000"))
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = "DENY"
+    CSRF_TRUSTED_ORIGINS = chm_env.env_list(os.environ, "DJANGO_CSRF_TRUSTED_ORIGINS")

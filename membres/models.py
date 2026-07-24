@@ -17,10 +17,16 @@ import secrets
 
 from django.contrib.auth.models import Group, User
 from django.core.exceptions import ValidationError
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 
-from core.models import ChoraleOwnedModel, SoftDeleteModel, SoftDeleteQuerySet, TimeStampedModel
+from core.models import (
+    Chorale,
+    ChoraleOwnedModel,
+    SoftDeleteModel,
+    SoftDeleteQuerySet,
+    TimeStampedModel,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -287,10 +293,33 @@ class Membre(SoftDeleteModel):
         chorale pouvait être CHA-0017.) Le max lexicographique est correct
         car le suffixe est zéro-paddé à largeur fixe.
 
-        NOTE : cette implémentation n'est pas thread-safe.
-        En production avec trafic concurrent, utiliser une séquence
-        PostgreSQL via django-sequences ou select_for_update().
+        CONCURRENCE — la ligne `Chorale` du tenant est verrouillée
+        (`SELECT … FOR UPDATE`) avant la lecture du dernier numéro. Sans ce
+        verrou, deux inscriptions simultanées lisent le même « dernier
+        numéro », calculent le même suffixe, et la seconde échoue en 500 sur
+        la contrainte d'unicité `numero_membre` au lieu d'obtenir le numéro
+        suivant.
+
+        Le verrou est tenu jusqu'au COMMIT de la transaction appelante : la
+        méthode DOIT donc être appelée à l'intérieur d'un
+        `transaction.atomic()` couvrant aussi la création du membre. Appelée
+        hors transaction, le verrou serait relâché avant l'INSERT et la course
+        réapparaîtrait silencieusement — d'où l'erreur explicite plutôt qu'une
+        fausse sécurité.
+
+        Sur SQLite (repli de développement), Django n'émet pas `FOR UPDATE` :
+        la sérialisation n'est pas effective, ce qui est sans conséquence sur
+        un poste mono-utilisateur.
         """
+        if not transaction.get_connection().in_atomic_block:
+            raise RuntimeError(
+                "Membre.generer_numero() doit être appelée dans un "
+                "transaction.atomic() englobant la création du membre : le "
+                "verrou de séquence doit être tenu jusqu'à l'INSERT."
+            )
+
+        Chorale.objects.select_for_update().get(pk=chorale.pk)
+
         dernier = (
             cls.objects
             .filter(chorale=chorale, numero_membre__startswith=f"{chorale.prefix}-")

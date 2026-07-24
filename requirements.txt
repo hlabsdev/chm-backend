@@ -12,6 +12,16 @@ djangorestframework-simplejwt>=5.3,<6.0
 # CORS (pour le frontend Angular)
 django-cors-headers>=4.3,<5.0
 
+# Base de données — PostgreSQL est la base de référence depuis le jalon
+# Docker/PostgreSQL ; la configuration passe par DATABASE_URL.
+psycopg[binary]>=3.2,<4.0
+dj-database-url>=2.2,<4.0
+
+# Service HTTP de production (jamais `runserver` en conteneur) et statiques
+# de l'admin Django servis directement par l'application.
+gunicorn>=23.0,<24.0
+whitenoise>=6.7,<7.0
+
 # Images (photos membres, logos)
 Pillow>=10.0
 

@@ -72,10 +72,18 @@ def provisionner_chorale(
     *, nom: str, prefix: str, admin_username: str, admin_email: str,
     admin_first_name: str, admin_last_name: str,
     currency: str = Chorale.Monnaie.XOF, admin_password: str | None = None,
+    admin_sexe: str = "", admin_telephone: str = "",
 ) -> tuple[Chorale, User, str, bool]:
     """
     Crée une chorale immédiatement utilisable : pupitres/postes/catégories
     standards + premier compte Bureau (Président, mandat actif).
+
+    `admin_sexe` et `admin_telephone` sont optionnels et laissés VIDES par
+    défaut : sur une vraie chorale, ces données appartiennent à la personne et
+    ne s'infèrent pas d'un prénom. Elles sont exposées en options de la
+    commande pour pouvoir renseigner un profil complet dès le provisionnement
+    plutôt que de laisser le premier compte Bureau incomplet — le sexe
+    conditionne notamment les tarifs de cotisation par genre.
 
     Renvoie (chorale, admin_user, mot_de_passe, mot_de_passe_genere).
     Lève ProvisionnementError si nom/préfixe/identifiant sont déjà pris.
@@ -133,6 +141,8 @@ def provisionner_chorale(
         numero_membre=Membre.generer_numero(chorale),
         date_adhesion=timezone.now().date(),
         statut=Membre.Statut.ACTIF,
+        sexe=admin_sexe,
+        telephone=admin_telephone,
     )
     Mandat.objects.create(
         membre=membre, poste=postes["Président"],

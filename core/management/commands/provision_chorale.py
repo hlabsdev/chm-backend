@@ -18,6 +18,7 @@ from core.services import (
     ProvisionnementError,
     provisionner_chorale,
 )
+from membres.models import Membre
 
 
 class Command(BaseCommand):
@@ -42,6 +43,18 @@ class Command(BaseCommand):
             "--admin-password", default=None,
             help="Mot de passe du premier compte. Si omis, un mot de passe aléatoire est généré et affiché une seule fois.",
         )
+        # Profil du premier membre : optionnel, jamais deviné. Le sexe
+        # conditionne les tarifs de cotisation par genre — le laisser vide
+        # rend ce pan des finances inexploitable pour ce membre.
+        parser.add_argument(
+            "--admin-sexe", default="",
+            choices=[""] + [s[0] for s in Membre.Sexe.choices],
+            help="Sexe du premier compte Bureau (optionnel ; sert aux tarifs de cotisation par genre).",
+        )
+        parser.add_argument(
+            "--admin-telephone", default="",
+            help="Téléphone du premier compte Bureau (optionnel).",
+        )
 
     def handle(self, *args, **options):
         try:
@@ -50,6 +63,7 @@ class Command(BaseCommand):
                 admin_username=options["admin_username"], admin_email=options["admin_email"],
                 admin_first_name=options["admin_first_name"], admin_last_name=options["admin_last_name"],
                 admin_password=options["admin_password"],
+                admin_sexe=options["admin_sexe"], admin_telephone=options["admin_telephone"],
             )
         except ProvisionnementError as exc:
             raise CommandError(str(exc)) from exc
