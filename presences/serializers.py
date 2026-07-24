@@ -70,6 +70,15 @@ class RepetitionDetailSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
 
+    def validate(self, data):
+        heure_debut = data.get("heure_debut", getattr(self.instance, "heure_debut", None))
+        heure_fin = data.get("heure_fin", getattr(self.instance, "heure_fin", None))
+        if heure_debut and heure_fin and heure_fin < heure_debut:
+            raise serializers.ValidationError({
+                "heure_fin": "L'heure de fin ne peut pas être antérieure à l'heure de début."
+            })
+        return data
+
 
 class PermissionRequestSerializer(serializers.ModelSerializer):
     """Sérialiseur pour les demandes de permission."""

@@ -153,7 +153,11 @@ class DashboardStatsView(APIView):
             }
 
         # Taux de présence moyen sur les 4 dernières répétitions pointées (réel).
-        dernieres_reps = Repetition.objects.filter(chorale=chorale).order_by("-date")[:4]
+        # date__lte : sans ce filtre, des répétitions planifiées (futures, taux
+        # None) évincent des séances passées de la fenêtre des 4 dernières.
+        dernieres_reps = Repetition.objects.filter(
+            chorale=chorale, date__lte=now.date()
+        ).order_by("-date")[:4]
         taux_list = [r.taux_presence for r in dernieres_reps if r.taux_presence is not None]
         taux_moyen = round(sum(taux_list) / len(taux_list), 1) if taux_list else 0
 

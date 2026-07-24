@@ -37,7 +37,10 @@ class ChantViewSet(SoftDeleteMixin, ChoraleFilterMixin, viewsets.ModelViewSet):
     Lecture : tous les membres authentifiés.
     Écriture : bureau ou maître de chœur.
     """
-    queryset = Chant.objects.all()
+    # prefetch themes + partitions : la liste sérialise les thèmes (M2M) et
+    # nombre_partitions (count() — servi par le cache de prefetch) pour chaque
+    # chant → sans prefetch, 2 requêtes supplémentaires PAR chant.
+    queryset = Chant.objects.prefetch_related("themes", "partitions")
     search_fields = ["titre", "compositeur"]
     ordering_fields = ["titre", "style", "created_at"]
     filterset_fields = ["style", "themes"]

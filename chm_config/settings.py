@@ -173,7 +173,11 @@ if DEBUG:
 # SimpleJWT
 # ---------------------------------------------------------------------------
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(hours=2),
+    # 30 min (et non 2 h) : le front décode les rôles depuis l'access token —
+    # après un changement de mandat ou une révocation, l'UI reste périmée
+    # jusqu'à son expiration. Le refresh silencieux (intercepteur Angular)
+    # ré-embarque alors les groupes frais : l'obsolescence s'auto-guérit vite.
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": False,

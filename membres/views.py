@@ -82,7 +82,16 @@ class PosteViewSet(ChoraleFilterMixin, viewsets.ModelViewSet):
     PUT    /api/membres/postes/{id}/     → modifier
     DELETE /api/membres/postes/{id}/     → supprimer
     """
-    queryset = Poste.objects.prefetch_related("groupes")
+    # Le Prefetch to_attr alimente titulaire_actuel (serializer) ET
+    # l'organigramme sans requête par poste (N+1 sinon).
+    queryset = Poste.objects.prefetch_related(
+        "groupes",
+        Prefetch(
+            "mandats",
+            queryset=Mandat.objects.filter(is_active=True).select_related("membre__user"),
+            to_attr="mandats_actifs_liste",
+        ),
+    )
     serializer_class = PosteSerializer
 
     def get_permissions(self):
@@ -100,13 +109,6 @@ class PosteViewSet(ChoraleFilterMixin, viewsets.ModelViewSet):
         postes = (
             self.get_queryset()
             .select_related("pupitre_concerne")
-            .prefetch_related(
-                Prefetch(
-                    "mandats",
-                    queryset=Mandat.objects.filter(is_active=True).select_related("membre__user"),
-                    to_attr="mandats_actifs_liste",
-                )
-            )
             .order_by("type_poste", "nom")
         )
         data = []
