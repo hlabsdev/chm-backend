@@ -25,11 +25,12 @@ Variables d'environnement (valeurs de dev par défaut, cf. `chm_config/settings.
 `DJANGO_SECRET_KEY`, `DJANGO_DEBUG`, `DJANGO_ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS`,
 et `WEASYPRINT_DLL_DIR` (voir Rapports/PDF ci-dessous).
 
-## Onboarding d'une chorale
+## Onboarding
 
-Il n'existe **volontairement pas** d'auto-inscription publique. Une nouvelle
-chorale rejoint la plateforme via une commande opérateur, qui crée la chorale
-+ ses pupitres/postes/catégories standards + le premier compte Bureau :
+### D'une nouvelle chorale — deux voies, jamais automatiques
+
+**Voie opérateur (ligne de commande)** — crée la chorale + ses pupitres/postes/
+catégories standards + le premier compte Bureau :
 
 ```bash
 python manage.py provision_chorale \
@@ -39,12 +40,36 @@ python manage.py provision_chorale \
 # mot de passe généré et affiché une seule fois si --admin-password est omis
 ```
 
+**Voie demande publique + modération** — un formulaire public
+(`POST /api/core/demandes-chorale/`, aussi exposé côté front sur
+`/auth/demande-chorale`) crée une `DemandeChorale` `en_attente`. **Aucune
+chorale n'est jamais créée automatiquement** : anti-abus par throttle IP
+(5/jour), honeypot, et rejet des doublons email/nom en attente. L'opérateur
+modère ensuite dans le Django admin (`/admin/core/demandechorale/`) : renseigne
+le préfixe attribué puis lance l'action « Approuver et provisionner » (ou
+« Rejeter »). Les deux voies partagent la même logique de bootstrap via
+`core/services.py::provisionner_chorale` — ne jamais la dupliquer.
+
 Pour peupler une **2e chorale de démo** (dev/QA multi-tenant : bureau, maître de
 chœur, choristes par pupitre, comptes homonymes) :
 
 ```bash
 python manage.py seed_demo_chorale        # ne jamais exécuter en production
 ```
+
+### D'un choriste — invitation par code, jamais d'inscription libre
+
+Il n'existe **volontairement pas** d'auto-inscription ouverte à qui devine une
+URL (l'ancien endpoint de ce type, scopé par un `chorale_id` séquentiel
+devinable, a été retiré). Un membre du Bureau génère un code d'invitation
+(`POST /api/membres/invitations/`, section « Invitations » de l'écran Membres
+côté front) : 8 caractères aléatoires, optionnellement limité en usages
+(`max_utilisations`, 1 = invitation nominative) et/ou dans le temps
+(`expire_le`). Le lien `/rejoindre/<code>` (public) vérifie le code
+(`GET /api/membres/invitations/verifier/`, throttle 20/h) puis inscrit le
+choriste dans **la** chorale du code (`POST /api/membres/invitations/rejoindre/`,
+throttle 10/h, verrouillage `select_for_update` contre les usages concurrents
+d'un code à quota limité) et le connecte immédiatement (JWT).
 
 ## Architecture
 
@@ -119,8 +144,11 @@ pytest -q                      # suite complète (pytest-django)
 python manage.py check
 ```
 
-Suite : ~86 tests couvrant auth, dashboard, isolation cross-tenant par app
+Suite : ~108 tests couvrant auth, dashboard, isolation cross-tenant par app
 (finances, membres, musique, présences), RBAC, structure (pupitres/postes/
 organigramme), bulk actions, annonces, rapports (agrégation + exports +
-dégradation PDF). Fixtures partagées dans `conftest.py` (`membre_factory`,
-`mandat_factory`, `chorale_a`/`chorale_b`, `auth_client`).
+dégradation PDF), demande d'adhésion chorale (throttle, honeypot, doublons,
+modération admin) et invitations choriste (génération, vérification,
+inscription, expiration/quota, throttle). Fixtures partagées dans
+`conftest.py` (`membre_factory`, `mandat_factory`, `chorale_a`/`chorale_b`,
+`auth_client`).
