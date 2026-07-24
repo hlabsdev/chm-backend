@@ -124,6 +124,54 @@ def test_cors_origines_explicites_acceptees_hors_debug():
 
 
 # ---------------------------------------------------------------------------
+# Cookies sécurisés
+# ---------------------------------------------------------------------------
+
+def test_cookies_secure_par_defaut_hors_debug():
+    assert chm_env.resoudre_cookies_secure({}, debug=False) is True
+
+
+def test_cookies_secure_par_defaut_en_debug():
+    """Django reste permissif par défaut sur le poste de dev (HTTP local)."""
+    assert chm_env.resoudre_cookies_secure({}, debug=True) is True
+
+
+def test_cookies_non_secure_refuses_hors_debug_sans_derogation():
+    """
+    Poser DJANGO_COOKIE_SECURE=False seul, hors DEBUG, ne suffit plus : un
+    simple oubli de variable ne doit pas permettre d'obtenir des cookies non
+    sécurisés.
+    """
+    env = {"DJANGO_COOKIE_SECURE": "False"}
+    with pytest.raises(ImproperlyConfigured):
+        chm_env.resoudre_cookies_secure(env, debug=False)
+
+
+def test_cookies_non_secure_acceptes_hors_debug_avec_derogation_explicite():
+    env = {
+        "DJANGO_COOKIE_SECURE": "False",
+        "DJANGO_ACCEPT_INSECURE_COOKIES": "True",
+    }
+    assert chm_env.resoudre_cookies_secure(env, debug=False) is False
+
+
+def test_cookies_non_secure_refuses_meme_avec_derogation_mal_orthographiee():
+    """La dérogation doit être exactement nommée : pas de tolérance implicite."""
+    env = {
+        "DJANGO_COOKIE_SECURE": "False",
+        "DJANGO_ACCEPT_INSECURE_COOKIE": "True",  # faute : COOKIE, pas COOKIES
+    }
+    with pytest.raises(ImproperlyConfigured):
+        chm_env.resoudre_cookies_secure(env, debug=False)
+
+
+def test_cookies_non_secure_acceptes_sans_derogation_en_debug():
+    """En dev, aucune dérogation à fournir : c'est le comportement historique."""
+    env = {"DJANGO_COOKIE_SECURE": "False"}
+    assert chm_env.resoudre_cookies_secure(env, debug=True) is False
+
+
+# ---------------------------------------------------------------------------
 # Base de données
 # ---------------------------------------------------------------------------
 

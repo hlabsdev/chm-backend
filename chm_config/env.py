@@ -131,6 +131,39 @@ def resoudre_cors(env, debug):
     }
 
 
+def resoudre_cookies_secure(env, debug):
+    """
+    Cookies de session et CSRF marqués `Secure` par défaut hors développement.
+
+    À la différence de SECRET_KEY/ALLOWED_HOSTS/CORS (aucune raison légitime
+    d'être permissifs), désactiver `Secure` a un cas d'usage réel et documenté :
+    une pile Compose locale servie en HTTP pur derrière un reverse-proxy qui
+    n'existe pas encore (cf. docs/DEPLOIEMENT.md). On ne peut donc pas
+    l'interdire purement et simplement comme les autres — mais l'omission
+    silencieuse d'une variable ne doit pas non plus suffire à l'obtenir : il
+    faut une seconde variable, au nom sans ambiguïté, qui ACTE le choix.
+
+    Poser DJANGO_COOKIE_SECURE=False seul, hors DEBUG, ne suffit donc plus :
+    DJANGO_ACCEPT_INSECURE_COOKIES=True doit être posée en plus, pour que
+    l'opérateur ne puisse pas désactiver Secure par un simple oubli de valeur
+    ailleurs (ex. copier un .env de dev en prod) sans s'en rendre compte.
+    """
+    securise = env_bool(env, "DJANGO_COOKIE_SECURE", True)
+    if debug or securise:
+        return securise
+
+    if not env_bool(env, "DJANGO_ACCEPT_INSECURE_COOKIES", False):
+        raise ImproperlyConfigured(
+            "DJANGO_COOKIE_SECURE=False est refusé lorsque DJANGO_DEBUG=False, "
+            "sauf à poser explicitement DJANGO_ACCEPT_INSECURE_COOKIES=True. "
+            "Les cookies de session et CSRF circuleraient alors en clair : à "
+            "n'accepter que si la pile est réellement servie sans TLS (ex. "
+            "déploiement HTTP local derrière un pare-feu, cf. "
+            "docs/DEPLOIEMENT.md). Sinon, laisser DJANGO_COOKIE_SECURE à True."
+        )
+    return securise
+
+
 def resoudre_database(env, debug, base_dir):
     """
     `DATABASE_URL` fait autorité. Le repli SQLite existe encore pour le poste de

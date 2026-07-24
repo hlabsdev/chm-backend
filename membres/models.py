@@ -390,6 +390,16 @@ class Mandat(TimeStampedModel):
         """
         Validation métier : si le poste n'accepte qu'un titulaire actif,
         vérifier qu'aucun autre mandat actif n'existe pour ce poste.
+
+        NOTE — cette verification seule ne suffit pas sous trafic concurrent :
+        elle lit puis écrit sans verrou, donc deux attributions simultanées au
+        même poste peuvent toutes deux lire « aucun titulaire actif » et
+        passer. La contrainte DB `unique_mandat_actif_par_membre_poste`
+        ci-dessus ne couvre que (membre, poste), jamais poste seul — deux
+        MEMBRES différents peuvent donc être insérés en concurrence sans
+        qu'aucune contrainte SQL ne les bloque. Voir
+        `verrouiller_poste_pour_unicite()` pour le verrou qui ferme
+        effectivement cette fenêtre ; appelé par MandatSerializer.
         """
         if self.is_active and getattr(self, "poste_id", None):
             if self.poste.unique_actif:
@@ -406,6 +416,35 @@ class Mandat(TimeStampedModel):
                         f"{conflit.membre.nom_complet}. Clôturez ce mandat "
                         f"avant d'en créer un nouveau."
                     )
+
+    @staticmethod
+    def verrouiller_poste_pour_unicite(poste) -> None:
+        """
+        Verrouille la ligne Poste (SELECT ... FOR UPDATE) avant toute
+        vérification/écriture touchant l'unicité de son titulaire actif.
+
+        Sans ce verrou, deux attributions simultanées du même poste
+        unique_actif à deux membres différents lisent chacune « aucun
+        titulaire actif », passent toutes deux la validation, et sont
+        insérées toutes deux : la contrainte DB ne porte que sur
+        (membre, poste), jamais sur poste seul, donc rien ne s'y oppose au
+        niveau SQL.
+
+        Même principe que Membre.generer_numero() : le verrou doit être tenu
+        jusqu'au COMMIT de la transaction qui fait la vérification ET
+        l'écriture — d'où l'exigence d'un transaction.atomic() englobant.
+        No-op si le poste n'est pas unique_actif (rien à sérialiser).
+        """
+        if not poste.unique_actif:
+            return
+        if not transaction.get_connection().in_atomic_block:
+            raise RuntimeError(
+                "Mandat.verrouiller_poste_pour_unicite() doit être appelée "
+                "dans un transaction.atomic() englobant la vérification et "
+                "l'écriture du mandat : le verrou doit être tenu jusqu'au "
+                "commit."
+            )
+        Poste.objects.select_for_update().get(pk=poste.pk)
 
     def terminer(self, date_fin=None) -> None:
         """

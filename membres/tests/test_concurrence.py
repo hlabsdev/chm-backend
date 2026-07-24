@@ -22,7 +22,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from core.models import Chorale
-from membres.models import InvitationChorale, Membre
+from membres.models import InvitationChorale, Mandat, Membre, Poste
 
 URL_REJOINDRE = "/api/membres/invitations/rejoindre/"
 
@@ -165,3 +165,73 @@ def test_matricules_concurrents_restent_uniques_dans_une_chorale():
         f"obtenu : {resultats}"
     )
     assert Membre.objects.filter(chorale=chorale).count() == 2
+
+
+@pytest.mark.django_db(transaction=True)
+def test_poste_unique_actif_resiste_a_deux_attributions_simultanees(
+    auth_client, membre_factory, mandat_factory, chorale_a
+):
+    """
+    PRIORITAIRE (cf. §10.3 du plan) : ce mécanisme sera refondu au prochain
+    jalon RBAC — ce test est le filet qui doit tenir en attendant.
+
+    Deux membres du Bureau attribuent, au même instant, le même poste
+    `unique_actif=True` à deux membres DIFFÉRENTS. La contrainte DB
+    `unique_mandat_actif_par_membre_poste` ne porte que sur (membre, poste) :
+    rien au niveau SQL n'empêche deux membres distincts d'avoir chacun un
+    mandat actif sur le même poste unique_actif. Seule
+    `Mandat.verrouiller_poste_pour_unicite()` (verrou + revalidation dans
+    MandatSerializer.create) ferme cette fenêtre.
+    """
+    _exiger_postgresql()
+
+    poste = Poste.objects.create(
+        chorale=chorale_a, nom="Présidente Concurrence",
+        type_poste=Poste.TypePoste.BUREAU, unique_actif=True,
+    )
+    bureau = membre_factory(chorale_a)
+    mandat_factory(bureau, "bureau")
+    candidat_a = membre_factory(chorale_a)
+    candidat_b = membre_factory(chorale_a)
+    # Deux clients authentifiés distincts (login hors barrière) : la course
+    # à tester porte sur l'écriture du mandat, pas sur l'authentification.
+    client_a = auth_client(bureau)
+    client_b = auth_client(bureau)
+
+    depart = threading.Barrier(2, timeout=15)
+    resultats = {}
+
+    def attribuer(suffixe, client, candidat):
+        try:
+            depart.wait()
+            resp = client.post(
+                "/api/membres/mandats/",
+                {
+                    "membre": candidat.pk,
+                    "poste": poste.pk,
+                    "date_debut": "2026-01-01",
+                    "is_active": True,
+                },
+                format="json",
+            )
+            resultats[suffixe] = resp.status_code
+        finally:
+            connections.close_all()
+
+    threads = [
+        threading.Thread(target=attribuer, args=("premier", client_a, candidat_a)),
+        threading.Thread(target=attribuer, args=("second", client_b, candidat_b)),
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=30)
+
+    assert sorted(resultats.values()) == [201, 400], (
+        f"Une seule attribution devait aboutir, obtenu : {resultats}"
+    )
+    actifs = Mandat.objects.filter(poste=poste, is_active=True)
+    assert actifs.count() == 1, (
+        f"Un seul mandat actif attendu sur ce poste unique_actif, "
+        f"obtenu : {list(actifs.values_list('membre_id', flat=True))}"
+    )

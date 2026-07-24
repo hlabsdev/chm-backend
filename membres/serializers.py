@@ -139,7 +139,15 @@ class MandatSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at"]
 
     def validate(self, data):
-        """Valide les contraintes métier (unique_actif, dates)."""
+        """
+        Valide les contraintes métier (unique_actif, dates).
+
+        Cette vérification échoue vite pour l'utilisateur (400 avant toute
+        écriture) mais NE FERME PAS la fenêtre de course : elle lit sans
+        verrou, avant la transaction d'écriture. C'est create()/update()
+        ci-dessous, sous verrou, qui a le dernier mot en cas de concurrence
+        réelle — cf. Mandat.verrouiller_poste_pour_unicite().
+        """
         poste = data.get("poste") or self.instance.poste if self.instance else None
         is_active = data.get("is_active", True)
         membre = data.get("membre") or self.instance.membre if self.instance else None
@@ -167,6 +175,40 @@ class MandatSerializer(serializers.ModelSerializer):
             })
 
         return data
+
+    def _revalider_sous_verrou(self, poste, is_active, exclude_pk):
+        """Répète la vérification de validate() APRÈS le verrou — seule autorité en cas de course."""
+        if is_active and poste.unique_actif:
+            conflit = (
+                Mandat.objects
+                .filter(poste=poste, is_active=True)
+                .exclude(pk=exclude_pk)
+                .select_related("membre")
+                .first()
+            )
+            if conflit:
+                raise serializers.ValidationError(
+                    f"Le poste « {poste.nom} » est déjà occupé par "
+                    f"{conflit.membre.nom_complet}."
+                )
+
+    @transaction.atomic
+    def create(self, validated_data):
+        poste = validated_data["poste"]
+        Mandat.verrouiller_poste_pour_unicite(poste)
+        self._revalider_sous_verrou(
+            poste, validated_data.get("is_active", True), exclude_pk=None
+        )
+        return super().create(validated_data)
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        poste = validated_data.get("poste", instance.poste)
+        Mandat.verrouiller_poste_pour_unicite(poste)
+        self._revalider_sous_verrou(
+            poste, validated_data.get("is_active", instance.is_active), exclude_pk=instance.pk
+        )
+        return super().update(instance, validated_data)
 
 
 class MandatNestedSerializer(serializers.ModelSerializer):

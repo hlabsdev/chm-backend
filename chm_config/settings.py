@@ -246,12 +246,16 @@ CORS_ALLOW_CREDENTIALS = _cors["allow_credentials"]
 if not DEBUG:
     SECURE_SSL_REDIRECT = chm_env.env_bool(os.environ, "DJANGO_SECURE_SSL_REDIRECT", True)
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-    # Cookies `Secure` par défaut (posture fermée). Un navigateur ne renvoie
-    # JAMAIS un cookie `Secure` sur une connexion HTTP : sur une pile locale
-    # servie en clair, laisser True rend la connexion à l'admin Django
-    # impossible (le cookie CSRF n'est jamais retourné → 403). D'où ce
-    # débrayage explicite, réservé aux environnements sans TLS.
-    _cookies_secure = chm_env.env_bool(os.environ, "DJANGO_COOKIE_SECURE", True)
+    # Cookies `Secure` par défaut (posture fermée) — cf. chm_config/env.py.
+    # Un navigateur ne renvoie JAMAIS un cookie `Secure` sur une connexion
+    # HTTP : sur une pile locale servie en clair, laisser True rend la
+    # connexion à l'admin Django impossible (le cookie CSRF n'est jamais
+    # retourné → 403). DJANGO_COOKIE_SECURE=False reste donc possible, mais
+    # exige EN PLUS DJANGO_ACCEPT_INSECURE_COOKIES=True : contrairement à
+    # SECRET_KEY/ALLOWED_HOSTS/CORS, ce débrayage a un usage légitime (pile
+    # sans TLS), donc on ne peut pas l'interdire — mais un simple oubli de
+    # variable ne doit pas suffire à l'obtenir non plus.
+    _cookies_secure = chm_env.resoudre_cookies_secure(os.environ, DEBUG)
     SESSION_COOKIE_SECURE = _cookies_secure
     CSRF_COOKIE_SECURE = _cookies_secure
     SECURE_HSTS_SECONDS = int(os.environ.get("DJANGO_SECURE_HSTS_SECONDS", "31536000"))

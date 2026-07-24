@@ -8,13 +8,24 @@ POST /api/presences/pointages/ (upsert). Tests ciblés :
 - isolation tenant sur l'écriture (pointer la répétition d'une autre chorale).
 """
 
+import threading
+
 import pytest
+from django.db import connection, connections
 
 from presences.models import Presence, Repetition
 
 pytestmark = pytest.mark.django_db
 
 URL = "/api/presences/pointages/"
+
+
+def _exiger_postgresql():
+    if connection.vendor != "postgresql":
+        pytest.skip(
+            "Verrouillage non observable hors PostgreSQL : sur SQLite Django "
+            "n'émet pas FOR UPDATE, le test serait un faux vert."
+        )
 
 
 @pytest.fixture
@@ -203,3 +214,61 @@ def test_mdc_ne_peut_pas_pointer_une_repetition_d_une_autre_chorale(
 
     assert resp.status_code == 404
     assert Presence.objects.count() == 0
+
+
+@pytest.mark.django_db(transaction=True)
+def test_double_soumission_simultanee_ne_cree_pas_de_doublon(
+    auth_client, membre_factory, mandat_factory, chorale_a, repetition_factory
+):
+    """
+    Double soumission RÉELLE (deux requêtes strictement simultanées) du même
+    pointage — pas le retry séquentiel de test_upsert_idempotent_pour_mdc
+    ci-dessus. Scénario concret : écran de pointage mobile à grandes zones
+    tactiles (cf. CLAUDE.md), un double-tap ou un retry réseau peut envoyer
+    deux POST identiques avant que la première réponse ne revienne.
+
+    `Presence.objects.update_or_create(...)` s'appuie sur le retry interne de
+    Django (capture l'IntegrityError du INSERT concurrent et refait le
+    SELECT) : ce test vérifie que cette garantie tient sous charge réelle,
+    pas seulement en théorie.
+    """
+    _exiger_postgresql()
+
+    mdc = membre_factory(chorale_a)
+    mandat_factory(mdc, "maitre_choeur")
+    choriste = membre_factory(chorale_a)
+    rep = repetition_factory(chorale_a)
+    client_a = auth_client(mdc)
+    client_b = auth_client(mdc)
+
+    depart = threading.Barrier(2, timeout=15)
+    resultats = {}
+
+    def pointer(suffixe, client):
+        try:
+            depart.wait()
+            resp = client.post(
+                URL, {"repetition": rep.pk, "membre": choriste.pk, "statut": "present"},
+                format="json",
+            )
+            resultats[suffixe] = resp.status_code
+        finally:
+            connections.close_all()
+
+    threads = [
+        threading.Thread(target=pointer, args=("premier", client_a)),
+        threading.Thread(target=pointer, args=("second", client_b)),
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=30)
+
+    assert sorted(resultats.values()) == [200, 201], (
+        f"L'un devait créer (201), l'autre mettre à jour (200) — jamais "
+        f"d'erreur serveur sur le doublon : {resultats}"
+    )
+    presences = Presence.objects.filter(repetition=rep, membre=choriste)
+    assert presences.count() == 1, (
+        f"Une seule ligne de présence attendue, obtenu {presences.count()}"
+    )

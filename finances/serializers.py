@@ -138,10 +138,20 @@ class PaiementCotisationSerializer(serializers.ModelSerializer):
         Crée le paiement ET le mouvement correspondant dans le journal.
         Met à jour le montant_paye et le statut de la cotisation.
         """
-        cotisation = validated_data["cotisation"]
         montant = validated_data["montant"]
         date_paiement = validated_data["date_paiement"]
         request = self.context.get("request")
+
+        # Verrouille la cotisation AVANT de lire montant_paye : sans ce verrou,
+        # deux paiements simultanés sur la même cotisation lisent tous deux le
+        # même montant_paye, et `cotisation.montant_paye += montant` plus bas
+        # écrit deux fois la même valeur incrémentée une seule fois — l'un des
+        # deux paiements est silencieusement perdu (argent non comptabilisé)
+        # bien que les deux PaiementCotisation et Mouvement existent en base.
+        cotisation = Cotisation.objects.select_for_update().get(
+            pk=validated_data["cotisation"].pk
+        )
+        validated_data["cotisation"] = cotisation
 
         # 1. Créer le mouvement dans le journal de caisse
         # Trouver ou créer la catégorie "Cotisation"
